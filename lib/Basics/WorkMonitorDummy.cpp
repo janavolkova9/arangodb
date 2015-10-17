@@ -1,12 +1,11 @@
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief tasks used to establish connections
+/// @brief work monitor dummy class
 ///
 /// @file
 ///
 /// DISCLAIMER
 ///
-/// Copyright 2014 ArangoDB GmbH, Cologne, Germany
-/// Copyright 2004-2014 triAGENS GmbH, Cologne, Germany
+/// Copyright 2015 ArangoDB GmbH, Cologne, Germany
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -23,46 +22,37 @@
 /// Copyright holder is ArangoDB GmbH, Cologne, Germany
 ///
 /// @author Dr. Frank Celler
-/// @author Achim Brandt
-/// @author Copyright 2014, ArangoDB GmbH, Cologne, Germany
-/// @author Copyright 2009-2013, triAGENS GmbH, Cologne, Germany
+/// @author Copyright 2015, ArangoDB GmbH, Cologne, Germany
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "HttpListenTask.h"
+#include "WorkMonitor.h"
 
-#include "HttpServer/HttpServer.h"
+#include "velocypack/velocypack-aliases.h"
 
-using namespace triagens::rest;
-
-// -----------------------------------------------------------------------------
-// --SECTION--                                              class HttpListenTask
-// -----------------------------------------------------------------------------
+using namespace arangodb;
 
 // -----------------------------------------------------------------------------
-// --SECTION--                                      constructors and destructors
+// --SECTION--                                                 class WorkMonitor
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// --SECTION--                                             static public methods
 // -----------------------------------------------------------------------------
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief listen to given port
+/// @brief thread deleter
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpListenTask::HttpListenTask (HttpServer* server, Endpoint* endpoint)
-  : Task("HttpListenTask"),
-    ListenTask(endpoint),
-    _server(server) {
+void WorkMonitor::DELETE_HANDLER (WorkDescription*) {
+  TRI_ASSERT(false);
 }
 
-// -----------------------------------------------------------------------------
-// --SECTION--                                                ListenTask methods
-// -----------------------------------------------------------------------------
-
 ////////////////////////////////////////////////////////////////////////////////
-/// {@inheritDoc}
+/// @brief thread description string
 ////////////////////////////////////////////////////////////////////////////////
 
-bool HttpListenTask::handleConnected (TRI_socket_t s, const ConnectionInfo& info) {
-  _server->handleConnected(s, info);
-  return true;
+void WorkMonitor::VPACK_HANDLER (VPackBuilder*, WorkDescription*) {
+  TRI_ASSERT(false);
 }
 
 // -----------------------------------------------------------------------------

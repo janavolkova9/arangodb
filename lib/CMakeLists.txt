@@ -49,6 +49,23 @@ SET(LIB_ARANGO_CONSOLE
   Utilities/LinenoiseShell.cpp
 )
 
+SET(LIB_ARANGO_VPACK
+  ../3rdParty/velocypack/src/Builder.cpp
+  ../3rdParty/velocypack/src/Collection.cpp
+  ../3rdParty/velocypack/src/Dumper.cpp
+  ../3rdParty/velocypack/src/Exception.cpp
+  ../3rdParty/velocypack/src/HexDump.cpp
+  ../3rdParty/velocypack/src/Options.cpp
+  ../3rdParty/velocypack/src/Parser.cpp
+  ../3rdParty/velocypack/src/Slice.cpp
+  ../3rdParty/velocypack/src/ValueType.cpp
+  ../3rdParty/velocypack/src/Version.cpp
+  ../3rdParty/velocypack/src/asm-functions.cpp
+  ../3rdParty/velocypack/src/fasthash.cpp
+  ../3rdParty/velocypack/src/fpconv.cpp
+  ../3rdParty/velocypack/src/velocypack-common.cpp 
+)
+
 add_library(
     ${LIB_ARANGO}
     STATIC
@@ -56,6 +73,7 @@ add_library(
     ${LIB_ARANGO_MSVC}
     ${LIB_ARANGO_POSIX}
     ${LIB_ARANGO_CONSOLE}
+    ${LIB_ARANGO_VPACK}
     Basics/application-exit.cpp
     Basics/associative.cpp
     Basics/AttributeNameParser.cpp
@@ -111,6 +129,7 @@ add_library(
     Basics/vector.cpp
     Basics/voc-errors.cpp
     Basics/voc-mimetypes.cpp
+    Basics/WorkMonitor.cpp
     Basics/WriteLocker.cpp
     Basics/WriteUnlocker.cpp
     Basics/xxhash.cpp

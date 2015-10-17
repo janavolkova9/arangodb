@@ -58,6 +58,7 @@ DispatcherQueue::DispatcherQueue (Scheduler* scheduler,
     _maxSize(maxSize),
     _waitLock(),
     _readyJobs(maxSize),
+    _numberJobs(0),
     _hazardLock(),
     _hazardPointer(nullptr),
     _stopping(false),
@@ -126,7 +127,10 @@ int DispatcherQueue::addJob (Job* job) {
   // add the job to the list of ready jobs
   bool ok = _readyJobs.push(job);
 
-  if (! ok) {
+  if (ok) {
+    ++_numberJobs;
+  }
+  else {
     LOG_WARNING("cannot insert job into ready queue, giving up");
 
     removeJob(job);
@@ -259,6 +263,8 @@ void DispatcherQueue::beginShutdown () {
     
     while(_readyJobs.pop(job)) {
       if (job != nullptr) {
+        --_numberJobs;
+
         try {
           job->cancel();
         }

@@ -38,6 +38,7 @@
 #include "Dispatcher/Job.h"
 #include "Dispatcher/RequeueTask.h"
 #include "Scheduler/Scheduler.h"
+#include "velocypack/velocypack-aliases.h"
 
 using namespace std;
 using namespace triagens::basics;
@@ -82,7 +83,7 @@ DispatcherThread::DispatcherThread (DispatcherQueue* queue)
 // -----------------------------------------------------------------------------
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief main loop
+/// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
 void DispatcherThread::run () {
@@ -100,6 +101,8 @@ void DispatcherThread::run () {
 
       while (_queue->_readyJobs.pop(job)) {
         if (job != nullptr) {
+          --(_queue->_numberJobs);
+
           worked = now;
           handleJob(job);
         }
@@ -143,6 +146,20 @@ void DispatcherThread::run () {
 
   // this will delete the thread
   _queue->removeStartedThread(this);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// {@inheritDoc}
+////////////////////////////////////////////////////////////////////////////////
+
+void DispatcherThread::addStatus(VPackBuilder* b) {
+  Thread::addStatus(b);
+  b->add("queue", VPackValue(_queue->_id));
+  b->add("stopping", VPackValue(_queue->_stopping.load()));
+  b->add("waitingJobs", VPackValue(_queue->_numberJobs.load()));
+  b->add("numberRunning", VPackValue((int) _queue->_nrRunning.load()));
+  b->add("numberWaiting", VPackValue((int) _queue->_nrWaiting.load()));
+  b->add("numberBlocked", VPackValue((int) _queue->_nrBlocked.load()));
 }
 
 // -----------------------------------------------------------------------------
@@ -288,8 +305,3 @@ void DispatcherThread::handleJob (Job* job) {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|// --SECTION--\\|/// @\\}"
-// End:
