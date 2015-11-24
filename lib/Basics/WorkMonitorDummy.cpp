@@ -27,6 +27,7 @@
 
 #include "WorkMonitor.h"
 
+#include "velocypack/Builder.h"
 #include "velocypack/velocypack-aliases.h"
 
 using namespace arangodb;

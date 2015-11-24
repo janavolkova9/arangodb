@@ -30,6 +30,9 @@
 #include "Basics/Mutex.h"
 #include "Basics/MutexLocker.h"
 #include "Basics/tri-strings.h"
+#include "velocypack/Builder.h"
+#include "velocypack/Dumper.h"
+#include "velocypack/Sink.h"
 #include "velocypack/velocypack-aliases.h"
 
 #include <boost/lockfree/queue.hpp>

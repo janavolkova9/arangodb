@@ -33,6 +33,8 @@
 #include "Basics/logging.h"
 #include "Basics/MutexLocker.h"
 #include "Basics/SpinLocker.h"
+#include "velocypack/Value.h"
+#include "velocypack/Builder.h"
 #include "velocypack/velocypack-aliases.h"
 
 #ifdef _WIN32

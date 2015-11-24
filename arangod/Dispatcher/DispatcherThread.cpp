@@ -38,6 +38,7 @@
 #include "Dispatcher/Job.h"
 #include "Dispatcher/RequeueTask.h"
 #include "Scheduler/Scheduler.h"
+#include "velocypack/Builder.h"
 #include "velocypack/velocypack-aliases.h"
 
 using namespace std;

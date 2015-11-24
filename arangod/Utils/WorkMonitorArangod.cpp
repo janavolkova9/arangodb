@@ -30,6 +30,8 @@
 #include <iostream>
 
 #include "HttpServer/HttpHandler.h"
+#include "velocypack/Builder.h"
+#include "velocypack/Value.h"
 #include "velocypack/velocypack-aliases.h"
 
 using namespace arangodb;

@@ -41,6 +41,7 @@
 #include "Basics/Exceptions.h"
 #include "Basics/logging.h"
 #include "Basics/WorkMonitor.h"
+#include "velocypack/Builder.h"
 #include "velocypack/velocypack-aliases.h"
 
 using namespace arangodb;
