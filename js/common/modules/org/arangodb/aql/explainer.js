@@ -597,6 +597,7 @@ function processQuery (query, explain) {
     if ([ "EnumerateCollectionNode",
           "EnumerateListNode",
           "IndexRangeNode",
+          "IndexNode",
           "SubqueryNode" ].indexOf(node.type) !== -1) {
       level++;
     }
@@ -685,10 +686,14 @@ function explain (data, options, shouldPrint) {
     throw "ArangoStatement needs initial data";
   }
 
+  if (options === undefined) {
+    options = data.options;
+  }
   options = options || { };
   setColors(options.colors === undefined ? true : options.colors);
 
   var stmt = db._createStatement(data);
+
   var result = stmt.explain(options);
 
   stringBuilder.clearOutput();

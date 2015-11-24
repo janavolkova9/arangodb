@@ -49,12 +49,16 @@ SET(LIB_ARANGO_CONSOLE
   Utilities/LinenoiseShell.cpp
 )
 
+include_directories(../3rdParty/velocypack/include)
+
 SET(LIB_ARANGO_VPACK
+  ../3rdParty/velocypack/src/AttributeTranslator.cpp
   ../3rdParty/velocypack/src/Builder.cpp
   ../3rdParty/velocypack/src/Collection.cpp
   ../3rdParty/velocypack/src/Dumper.cpp
   ../3rdParty/velocypack/src/Exception.cpp
   ../3rdParty/velocypack/src/HexDump.cpp
+  ../3rdParty/velocypack/src/Iterator.cpp
   ../3rdParty/velocypack/src/Options.cpp
   ../3rdParty/velocypack/src/Parser.cpp
   ../3rdParty/velocypack/src/Slice.cpp
