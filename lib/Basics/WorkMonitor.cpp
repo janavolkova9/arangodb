@@ -140,6 +140,8 @@ static void deleteWorkDescription (WorkDescription* desc) {
 /// @brief vpack representation of a work description
 ////////////////////////////////////////////////////////////////////////////////
 
+#if 0
+
 static void vpackWorkDescription (VPackBuilder* b, WorkDescription* desc) {
   switch (desc->_type) {
     case WorkType::THREAD:
@@ -166,6 +168,8 @@ static void vpackWorkDescription (VPackBuilder* b, WorkDescription* desc) {
     b->close();
   }
 }
+
+#endif
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                            struct WorkDescription
@@ -311,8 +315,6 @@ void WorkMonitor::pushCustom (const char* type, const char* text, size_t length)
   TRI_CopyString(desc->_customType, type, sizeof(desc->_customType));
   TRI_CopyString(desc->_data.text, text, length);
 
-  std::cout << "############### " << type << " " << desc->_data.text << "\n";
-
   activateWorkDescription(desc);
 }
 
@@ -322,8 +324,6 @@ void WorkMonitor::pushCustom (const char* type, const char* text, size_t length)
 
 void WorkMonitor::popCustom () {
   WorkDescription* desc = deactivateWorkDescription();
-
-  std::cout << "POPOPOPOPOP\n";
 
   TRI_ASSERT(desc->_type == WorkType::CUSTOM);
 
@@ -343,8 +343,6 @@ void WorkMonitor::run () {
   const uint32_t minSleep = 100;
   uint32_t s = minSleep;
 
-  double x = TRI_microtime();
-
   while (! _stopping) {
     bool found = false;
     WorkDescription* desc;
@@ -361,6 +359,7 @@ void WorkMonitor::run () {
       s *= 2;
     }
 
+#if 0
     double y = TRI_microtime();
 
     if (x + 10 < y) {
@@ -392,11 +391,8 @@ void WorkMonitor::run () {
 
       VPackDumper dumper(&sink, &options);
       dumper.dump(s);
-
-      std::cout << buffer << "\n";
-
-      std::cout << "----------------------------------------------------------------------\n";
     }
+#endif
 
     usleep(s);
   }
