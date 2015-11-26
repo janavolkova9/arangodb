@@ -323,7 +323,7 @@ void RestSimpleHandler::removeByKeys (TRI_json_t const* json) {
     }
 
     { 
-      _response = createResponse(HttpResponse::OK);
+      createResponse(HttpResponse::OK);
       _response->setContentType("application/json; charset=utf-8");
 
       size_t ignored = 0;
@@ -506,7 +506,7 @@ void RestSimpleHandler::lookupByKeys (TRI_json_t const* json) {
     }
 
     { 
-      _response = createResponse(HttpResponse::OK);
+      createResponse(HttpResponse::OK);
       _response->setContentType("application/json; charset=utf-8");
 
       size_t n = 10; 

@@ -972,6 +972,8 @@ void HttpCommTask::processRequest (uint32_t compatibility) {
     return;
   }
 
+  handler.get()->setTaskId(taskId());
+
   // clear request object
   _request = nullptr;
   RequestStatisticsAgent::transfer(handler.get());

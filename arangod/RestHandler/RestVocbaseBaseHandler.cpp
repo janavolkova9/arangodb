@@ -202,7 +202,7 @@ void RestVocbaseBaseHandler::generate20x (HttpResponse::HttpResponseCode respons
   string const&& handle = DocumentHelper::assembleDocumentId(collectionName, key);
   string const&& rev = StringUtils::itoa(rid);
 
-  _response = createResponse(responseCode);
+  createResponse(responseCode);
   _response->setContentType("application/json; charset=utf-8");
 
   if (responseCode != HttpResponse::OK) {
@@ -267,7 +267,7 @@ void RestVocbaseBaseHandler::generatePreconditionFailed (string const& collectio
                                                          TRI_voc_rid_t rid) {
   string const&& rev = StringUtils::itoa(rid);
 
-  _response = createResponse(HttpResponse::PRECONDITION_FAILED);
+  createResponse(HttpResponse::PRECONDITION_FAILED);
   _response->setContentType("application/json; charset=utf-8");
   _response->setHeader("etag", 4, "\"" + rev + "\"");
 
@@ -294,7 +294,7 @@ void RestVocbaseBaseHandler::generatePreconditionFailed (string const& collectio
 void RestVocbaseBaseHandler::generateNotModified (TRI_voc_rid_t rid) {
   string const&& rev = StringUtils::itoa(rid);
 
-  _response = createResponse(HttpResponse::NOT_MODIFIED);
+  createResponse(HttpResponse::NOT_MODIFIED);
   _response->setHeader("etag", 4, "\"" + rev + "\"");
 }
 
@@ -380,7 +380,7 @@ void RestVocbaseBaseHandler::generateDocument (SingleCollectionReadOnlyTransacti
   }
 
   // and generate a response
-  _response = createResponse(HttpResponse::OK);
+  createResponse(HttpResponse::OK);
   _response->setContentType("application/json; charset=utf-8");
   _response->setHeader("etag", 4, "\"" + rid + "\"");
 

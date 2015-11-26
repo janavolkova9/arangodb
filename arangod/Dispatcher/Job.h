@@ -68,7 +68,6 @@ namespace triagens {
 
         enum status_e {
           JOB_DONE,
-          JOB_REQUEUE,
           JOB_FAILED
         };
 
@@ -173,12 +172,6 @@ namespace triagens {
         virtual size_t queue () const;
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the thread which currently dealing with the job
-////////////////////////////////////////////////////////////////////////////////
-
-        virtual void setDispatcherThread (DispatcherThread*);
-
-////////////////////////////////////////////////////////////////////////////////
 /// @brief starts working
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -234,8 +227,3 @@ namespace triagens {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|/// @startDocuBlock\\|// --SECTION--\\|/// @\\}"
-// End:

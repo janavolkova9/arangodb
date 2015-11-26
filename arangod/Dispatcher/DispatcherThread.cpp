@@ -202,9 +202,6 @@ void DispatcherThread::handleJob (Job* job) {
   try {
     RequestStatisticsAgentSetQueueEnd(job);
 
-    // set current thread
-    job->setDispatcherThread(this);
-
     // and do all the dirty work
     status = job->work();
   }
@@ -273,23 +270,7 @@ void DispatcherThread::handleJob (Job* job) {
 
   // finish jobs
   try {
-    job->setDispatcherThread(nullptr);
-
-    if (status.status == Job::JOB_DONE || status.status == Job::JOB_FAILED) {
-      job->cleanup(_queue);
-    }
-    else if (status.status == Job::JOB_REQUEUE) {
-      if (0.0 < status.sleep) {
-        _queue->_scheduler->registerTask(
-          new RequeueTask(_queue->_scheduler,
-                          _queue->_dispatcher,
-                          status.sleep,
-                          job));
-      }
-      else {
-        _queue->_dispatcher->addJob(job);
-      }
-    }
+    job->cleanup(_queue);
   }
   catch (...) {
 #ifdef TRI_HAVE_POSIX_THREADS

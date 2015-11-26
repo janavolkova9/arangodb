@@ -107,14 +107,6 @@ size_t HttpServerJob::queue () const {
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServerJob::setDispatcherThread (DispatcherThread* thread) {
-  _handler->setDispatcherThread(thread);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// {@inheritDoc}
-////////////////////////////////////////////////////////////////////////////////
-
 Job::status_t HttpServerJob::work () {
   TRI_ASSERT(_handler != nullptr); 
 
@@ -128,21 +120,7 @@ Job::status_t HttpServerJob::work () {
     return status_t(Job::JOB_DONE);
   }
 
-  RequestStatisticsAgentSetRequestStart(_handler);
-  _handler->prepareExecute();
-
-  HttpHandler::status_t status;
-
-  try {
-    status = _handler->execute();
-  }
-  catch (...) {
-    _handler->finalizeExecute();
-    throw;
-  }
-
-  _handler->finalizeExecute();
-  RequestStatisticsAgentSetRequestEnd(_handler);
+  HttpHandler::status_t status = _handler->executeFull();
 
   LOG_TRACE("finished job %p with status %d", (void*) this, (int) status.status);
 

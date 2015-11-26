@@ -213,7 +213,7 @@ HttpHandler::status_t RestBatchHandler::execute () {
   string authorization = _request->header("authorization");
 
   // create the response
-  _response = createResponse(HttpResponse::OK);
+  createResponse(HttpResponse::OK);
   _response->setContentType(_request->header("content-type"));
 
   // setup some auxiliary structures to parse the multipart message
@@ -311,29 +311,7 @@ HttpHandler::status_t RestBatchHandler::execute () {
     // start to work for this handler
     {
       HandlerWorkStack work(handler, true);
-      HttpHandler::status_t status(HttpHandler::HANDLER_FAILED);
-
-      do {
-        handler->prepareExecute();
-
-        try {
-          status = handler->execute();
-        }
-        catch (Exception const& ex) {
-          handler->handleError(ex);
-        }
-        catch (exception const& ex) {
-          Exception err(TRI_ERROR_INTERNAL, ex.what(), __FILE__, __LINE__);
-          handler->handleError(err);
-        }
-        catch (...) {
-          Exception err(TRI_ERROR_INTERNAL, __FILE__, __LINE__);
-          handler->handleError(err);
-        }
-
-        handler->finalizeExecute();
-      }
-      while (status.status == HttpHandler::HANDLER_REQUEUE);
+      HttpHandler::status_t status = handler->executeFull();
 
       if (status.status == HttpHandler::HANDLER_FAILED) {
         generateError(HttpResponse::BAD, TRI_ERROR_INTERNAL, "executing a handler for batch part failed");

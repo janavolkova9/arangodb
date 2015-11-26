@@ -5,7 +5,7 @@
 ///
 /// DISCLAIMER
 ///
-/// Copyright 2014 ArangoDB GmbH, Cologne, Germany
+/// Copyright 2014-2015 ArangoDB GmbH, Cologne, Germany
 /// Copyright 2004-2014 triAGENS GmbH, Cologne, Germany
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
 ///
 /// @author Dr. Frank Celler
 /// @author Martin Schoenert
-/// @author Copyright 2014, ArangoDB GmbH, Cologne, Germany
+/// @author Copyright 2014-2015, ArangoDB GmbH, Cologne, Germany
 /// @author Copyright 2009-2014, triAGENS GmbH, Cologne, Germany
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,18 +43,14 @@ using namespace std;
 /// @brief constructs a job
 ////////////////////////////////////////////////////////////////////////////////
 
-Job::Job (string const& name)
-  : _name(name),
-    _id(0),
-    _queuePosition((size_t) -1) {
-}
+Job::Job(string const &name)
+    : _name(name), _id(0), _queuePosition((size_t)-1) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief destructor
 ////////////////////////////////////////////////////////////////////////////////
 
-Job::~Job () {
-}
+Job::~Job() {}
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                            virtual public methods
@@ -64,22 +60,8 @@ Job::~Job () {
 /// @brief returns the queue name to use
 ////////////////////////////////////////////////////////////////////////////////
 
-size_t Job::queue () const {
-  return Dispatcher::STANDARD_QUEUE;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the thread which currently dealing with the job
-////////////////////////////////////////////////////////////////////////////////
-
-void Job::setDispatcherThread (DispatcherThread*) {
-}
+size_t Job::queue() const { return Dispatcher::STANDARD_QUEUE; }
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|// --SECTION--\\|/// @\\}"
-// End:

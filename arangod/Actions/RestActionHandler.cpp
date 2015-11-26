@@ -114,20 +114,7 @@ HttpHandler::status_t RestActionHandler::execute () {
   }
 
   // handler has finished, generate result
-  if (result.isValid) {
-    if (result.requeue) {
-      status_t status(HANDLER_REQUEUE);
-      status.sleep = result.sleep;
-
-      return status;
-    }
-    else {
-      return status_t(HANDLER_DONE);
-    }
-  }
-  else {
-    return status_t(HANDLER_FAILED);
-  }
+  return status_t(result.isValid ? HANDLER_DONE : HANDLER_FAILED);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

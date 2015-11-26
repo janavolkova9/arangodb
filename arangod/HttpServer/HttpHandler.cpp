@@ -50,18 +50,14 @@ using namespace triagens::rest;
 /// @brief constructs a new handler
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpHandler::HttpHandler (HttpRequest* request)
-  : _dispatcherThread(nullptr),
-    _request(request),
-    _response(nullptr),
-    _server(nullptr) {
-}
+HttpHandler::HttpHandler(HttpRequest *request)
+    : _taskId(0), _request(request), _response(nullptr), _server(nullptr) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief destructs a handler
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpHandler::~HttpHandler () {
+HttpHandler::~HttpHandler() {
   delete _request;
   delete _response;
 }
@@ -74,9 +70,9 @@ HttpHandler::~HttpHandler () {
 /// @brief returns the queue name
 ////////////////////////////////////////////////////////////////////////////////
 
-size_t HttpHandler::queue () const {
+size_t HttpHandler::queue() const {
   bool found;
-  const char* queue = _request->header("x-arango-queue", found);
+  const char *queue = _request->header("x-arango-queue", found);
 
   if (found) {
     uint32_t n = StringUtils::uint32(queue);
@@ -92,41 +88,28 @@ size_t HttpHandler::queue () const {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the thread which currently dealing with the job
-////////////////////////////////////////////////////////////////////////////////
-
-void HttpHandler::setDispatcherThread (DispatcherThread* dispatcherThread) {
-  _dispatcherThread = dispatcherThread;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// @brief prepares for execution
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpHandler::prepareExecute () {
-}
+void HttpHandler::prepareExecute() {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief tries to cancel an execution
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpHandler::finalizeExecute () {
-}
+void HttpHandler::finalizeExecute() {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief tries to cancel an execution
 ////////////////////////////////////////////////////////////////////////////////
 
-bool HttpHandler::cancel () {
-  return false;
-}
-
+bool HttpHandler::cancel() { return false; }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief adds a response
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpHandler::addResponse (HttpHandler*) {
+void HttpHandler::addResponse(HttpHandler *) {
   // nothing by default
 }
 
@@ -134,28 +117,80 @@ void HttpHandler::addResponse (HttpHandler*) {
 // --SECTION--                                                    public methods
 // -----------------------------------------------------------------------------
 
+//////////////////////////////////////////////////////////////////////////////
+/// @brief sets the id of the underlying task or 0 to dettach
+//////////////////////////////////////////////////////////////////////////////
+
+void HttpHandler::setTaskId(uint64_t id) {
+  _taskId = id;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/// @brief execution cycle including error handling and prepare
+//////////////////////////////////////////////////////////////////////////////
+
+HttpHandler::status_t HttpHandler::executeFull() {
+  HttpHandler::status_t status(HttpHandler::HANDLER_FAILED);
+
+  RequestStatisticsAgentSetRequestStart(this); // FMH TODO: move into monitor
+
+  try {
+    prepareExecute();
+
+    try {
+      status = execute();
+    } catch (Exception const &ex) {
+      RequestStatisticsAgentSetExecuteError(this);
+      handleError(ex);
+    } catch (std::exception const &ex) {
+      RequestStatisticsAgentSetExecuteError(this);
+      Exception err(TRI_ERROR_INTERNAL, ex.what(), __FILE__, __LINE__);
+      handleError(err);
+    } catch (...) {
+      RequestStatisticsAgentSetExecuteError(this);
+      Exception err(TRI_ERROR_INTERNAL, __FILE__, __LINE__);
+      handleError(err);
+    }
+
+    finalizeExecute();
+
+    RequestStatisticsAgentSetRequestEnd(this);
+
+    return status;
+  } catch (Exception const &ex) {
+    RequestStatisticsAgentSetExecuteError(this);
+    LOG_ERROR("caught exception: %s", DIAGNOSTIC_INFORMATION(ex));
+  } catch (std::exception const &ex) {
+    RequestStatisticsAgentSetExecuteError(this);
+    LOG_ERROR("caught exception: %s", ex.what());
+  } catch (...) {
+    RequestStatisticsAgentSetExecuteError(this);
+    LOG_ERROR("caught exception");
+  }
+
+  RequestStatisticsAgentSetRequestEnd(this);
+
+  return status_t(HttpHandler::HANDLER_FAILED);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief register the server object
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpHandler::setServer (HttpHandlerFactory* server) {
-  _server = server;
-}
+void HttpHandler::setServer(HttpHandlerFactory *server) { _server = server; }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief return a pointer to the request
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpRequest const* HttpHandler::getRequest () const {
-  return _request;
-}
+HttpRequest const *HttpHandler::getRequest() const { return _request; }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief steal the request
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpRequest* HttpHandler::stealRequest () {
-  HttpRequest* tmp = _request;
+HttpRequest *HttpHandler::stealRequest() {
+  HttpRequest *tmp = _request;
   _request = nullptr;
   return tmp;
 }
@@ -164,16 +199,14 @@ HttpRequest* HttpHandler::stealRequest () {
 /// @brief returns the response
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpResponse* HttpHandler::getResponse () const {
-  return _response;
-}
+HttpResponse *HttpHandler::getResponse() const { return _response; }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief steal the response
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpResponse* HttpHandler::stealResponse () {
-  HttpResponse* tmp = _response;
+HttpResponse *HttpHandler::stealResponse() {
+  HttpResponse *tmp = _response;
   _response = nullptr;
   return tmp;
 }
@@ -183,42 +216,29 @@ HttpResponse* HttpHandler::stealResponse () {
 // -----------------------------------------------------------------------------
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief ensure the handler has only one response, otherwise we'd have a leak
+/// @brief create a new HTTP response
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpHandler::removePreviousResponse () {
+void HttpHandler::createResponse(HttpResponse::HttpResponseCode code) {
+
+  // avoid having multiple responses. this would be a memleak
   if (_response != nullptr) {
     delete _response;
     _response = nullptr;
   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief create a new HTTP response
-////////////////////////////////////////////////////////////////////////////////
-
-HttpResponse* HttpHandler::createResponse (HttpResponse::HttpResponseCode code) {
-  // avoid having multiple responses. this would be a memleak
-  removePreviousResponse();
 
   int32_t apiCompatibility;
 
-  if (this->_request != nullptr) {
-    apiCompatibility = this->_request->compatibility();
-  }
-  else {
+  if (_request != nullptr) {
+    apiCompatibility = _request->compatibility();
+  } else {
     apiCompatibility = HttpRequest::MinCompatibility;
   }
 
-  // otherwise, we return a "standard" (standalone) Http response
-  return new HttpResponse(code, apiCompatibility);
+  // create a "standard" (standalone) Http response
+  _response = new HttpResponse(code, apiCompatibility);
 }
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|// --SECTION--\\|/// @\\}"
-// End:
