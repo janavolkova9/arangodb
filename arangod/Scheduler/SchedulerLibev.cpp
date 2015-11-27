@@ -633,6 +633,20 @@ void SchedulerLibev::rearmTimer (EventToken token, double timeout) {
   ev_timer_again(watcher->loop, w);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// {@inheritDoc}
+////////////////////////////////////////////////////////////////////////////////
+
+void SchedulerLibev::signalTask (TaskData* data) {
+  size_t loop = size_t(data->_loop);
+
+  if (loop >= nrThreads) {
+    return;
+  }
+
+  threads[loop]->signalTask(data);
+}
+
 // -----------------------------------------------------------------------------
 // --SECTION--                                                   private methods
 // -----------------------------------------------------------------------------

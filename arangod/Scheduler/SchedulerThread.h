@@ -32,6 +32,9 @@
 #define ARANGODB_SCHEDULER_SCHEDULER_THREAD_H 1
 
 #include "Basics/Common.h"
+
+#include <boost/lockfree/queue.hpp>
+
 #include "Basics/Mutex.h"
 #include "Basics/SpinLock.h"
 #include "Basics/Thread.h"
@@ -120,6 +123,12 @@ namespace triagens {
 ////////////////////////////////////////////////////////////////////////////////
 
         void destroyTask (Task*);
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief sends data to a task
+////////////////////////////////////////////////////////////////////////////////
+
+        void signalTask (TaskData*);
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                    Thread methods
@@ -246,6 +255,12 @@ namespace triagens {
 ////////////////////////////////////////////////////////////////////////////////
 
         std::atomic<int> _numberTasks;
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief stored task data
+////////////////////////////////////////////////////////////////////////////////
+
+        boost::lockfree::queue<TaskData*> _taskData;
     };
   }
 }

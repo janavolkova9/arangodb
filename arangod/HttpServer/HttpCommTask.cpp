@@ -972,7 +972,7 @@ void HttpCommTask::processRequest (uint32_t compatibility) {
     return;
   }
 
-  handler.get()->setTaskId(taskId());
+  handler.get()->setTaskId(_taskId, _loop);
 
   // clear request object
   _request = nullptr;
@@ -1171,6 +1171,19 @@ bool HttpCommTask::handleEvent (EventToken token,
   }
 
   return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// {@inheritDoc}
+////////////////////////////////////////////////////////////////////////////////
+
+#include <iostream>
+
+void HttpCommTask::signalTask (TaskData* data) {
+  std::cout << "ID " << data->_taskId << " "
+            << "LOOP " << data->_loop << " "
+            << "TYPE " << data->_type << " "
+            << "DATA " << data->_data << "\n";
 }
 
 // -----------------------------------------------------------------------------

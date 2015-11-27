@@ -30,13 +30,14 @@
 
 #include "HttpServerJob.h"
 
-#include "Basics/logging.h"
 #include "Basics/WorkMonitor.h"
+#include "Basics/logging.h"
 #include "Dispatcher/DispatcherQueue.h"
 #include "HttpServer/AsyncJobManager.h"
 #include "HttpServer/HttpCommTask.h"
 #include "HttpServer/HttpHandler.h"
 #include "HttpServer/HttpServer.h"
+#include "Scheduler/Scheduler.h"
 
 using namespace arangodb;
 using namespace triagens::rest;
@@ -146,6 +147,14 @@ void HttpServerJob::cleanup (DispatcherQueue* queue) {
   else {
     _isInCleanup.store(true);
     
+    TaskData* data = new TaskData;
+    data->_taskId = _handler->taskId();
+    data->_loop = _handler->eventLoop();
+    data->_type = 1;
+    data->_data = "Hallo World";
+
+    Scheduler::SCHEDULER.get()->signalTask(data);
+
     if (_task != nullptr) {
       _task->setHandler(_handler);
       _handler = nullptr;

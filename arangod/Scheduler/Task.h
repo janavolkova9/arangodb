@@ -34,6 +34,7 @@
 #define ARANGODB_SCHEDULER_TASK_H 1
 
 #include "Basics/Common.h"
+
 #include "Scheduler/events.h"
 
 struct TRI_json_t;
@@ -41,20 +42,38 @@ struct TRI_json_t;
 namespace triagens {
   namespace rest {
     class Scheduler;
+    class HttpResponse;
+
+// -----------------------------------------------------------------------------
+// --SECTION--                                                    class TaskData
+// -----------------------------------------------------------------------------
+
+    class TaskData {
+    public:
+      uint64_t _taskId;
+      EventLoop _loop;
+      uint64_t _type;
+      std::string _data;
+      HttpResponse *response;
+    };
+
+// -----------------------------------------------------------------------------
+// --SECTION--                                                        class Task
+// -----------------------------------------------------------------------------
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief abstract base class for tasks
 ////////////////////////////////////////////////////////////////////////////////
 
     class Task {
+      Task (Task const&) = delete;
+      Task& operator= (Task const&) = delete;
+
+      friend class TaskManager;
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                        constructors / destructors
 // -----------------------------------------------------------------------------
-
-      friend class TaskManager;
-      Task (Task const&) = delete;
-      Task& operator= (Task const&) = delete;
 
       public:
 
@@ -147,6 +166,12 @@ namespace triagens {
 
         virtual bool handleEvent (EventToken token, EventType event) = 0;
 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief signals a result
+////////////////////////////////////////////////////////////////////////////////
+
+        virtual void signalTask (TaskData*) {}
+
 // -----------------------------------------------------------------------------
 // --SECTION--                                                 protected methods
 // -----------------------------------------------------------------------------
@@ -227,8 +252,3 @@ namespace triagens {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|// --SECTION--\\|/// @\\}"
-// End:

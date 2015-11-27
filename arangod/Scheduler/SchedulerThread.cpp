@@ -70,7 +70,8 @@ SchedulerThread::SchedulerThread (Scheduler* scheduler, EventLoop loop, bool def
     _stopped(false),
     _open(false),
     _hasWork(false),
-    _numberTasks(0) {
+    _numberTasks(0),
+    _taskData(100) {
 
   // allow cancelation
   allowAsynchronousCancelation();
@@ -211,6 +212,7 @@ void SchedulerThread::destroyTask (Task* task) {
 
   // different thread, be careful - we have to stop the event loop
   else {
+
     // put the unregister request into the queue
     Work w(DESTROY, nullptr, task);
 
@@ -221,6 +223,15 @@ void SchedulerThread::destroyTask (Task* task) {
 
     _scheduler->wakeupLoop(_loop);
   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief sends data to a task
+////////////////////////////////////////////////////////////////////////////////
+
+void SchedulerThread::signalTask (TaskData* data) {
+  _taskData.push(data);
+  _scheduler->wakeupLoop(_loop);
 }
 
 // -----------------------------------------------------------------------------
@@ -247,6 +258,19 @@ void SchedulerThread::run () {
   }
 
   while (! _stopping.load()) {
+
+    // handle the returned data
+    TaskData* data;
+    
+    while (_taskData.pop(data)) {
+      Task* task = _scheduler->lookupTaskById(data->_taskId);
+
+      if (task != nullptr) {
+        task->signalTask(data);
+      }
+    }
+
+    // handle the events
     try {
       _scheduler->eventLoop(_loop);
     }
@@ -269,7 +293,7 @@ void SchedulerThread::run () {
       Work w;
 
       {
-        SCHEDULER_LOCKER(_queueLock);
+        SCHEDULER_LOCKER(_queueLock); // TODO(fc) XXX goto boost lockfree
 
         if (! _hasWork.load() || _queue.empty()) {
           break;
@@ -319,6 +343,15 @@ void SchedulerThread::run () {
   LOG_TRACE("scheduler thread stopped (%llu)", (unsigned long long) threadId());
 
   _stopped = true;
+
+  // pop all undeliviered task data
+  {
+    TaskData* data;
+
+    while (_taskData.pop(data)) {
+      delete data;
+    }
+  }
 
   // pop all elements from the queue and delete them
   while (true) {
