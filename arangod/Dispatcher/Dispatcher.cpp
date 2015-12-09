@@ -121,8 +121,8 @@ void Dispatcher::addAQLQueue (size_t nrThreads, size_t maxSize) {
 ////////////////////////////////////////////////////////////////////////////////
 
 int Dispatcher::addExtraQueue (size_t identifier,
-			       size_t nrThreads,
-			       size_t maxSize) {
+                               size_t nrThreads,
+                               size_t maxSize) {
   if (identifier == 0) {
     return TRI_ERROR_QUEUE_ALREADY_EXISTS;
   }
@@ -156,11 +156,13 @@ int Dispatcher::addExtraQueue (size_t identifier,
 /// @brief adds a new job
 ////////////////////////////////////////////////////////////////////////////////
 
-int Dispatcher::addJob (Job* job) {
+int Dispatcher::addJob (std::unique_ptr<Job> &jobPtr) {
+  Job* job = jobPtr.release();
   RequestStatisticsAgentSetQueueStart(job);
 
   // do not start new jobs if we are already shutting down
   if (_stopping.load(memory_order_relaxed)) {
+    delete job;
     return TRI_ERROR_DISPATCHER_IS_STOPPING;
   }
 
@@ -169,6 +171,7 @@ int Dispatcher::addJob (Job* job) {
   DispatcherQueue* queue;
 
   if (qnr >= _queues.size() || (queue = _queues[qnr]) == nullptr) {
+    delete job;
     LOG_WARNING("unknown queue '%lu'", (unsigned long) qnr);
     return TRI_ERROR_QUEUE_UNKNOWN;
   }
@@ -178,7 +181,7 @@ int Dispatcher::addJob (Job* job) {
   LOG_TRACE("added job %p to queue '%lu'", (void*) job, (unsigned long) qnr);
 
   // add the job to the list of ready jobs
-  return queue->addJob(job);
+  return queue->addJob(job); // TODO(fc) XXX pass on unique_ptr?
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -162,18 +162,14 @@ AsyncJobResult::~AsyncJobResult () {
 /// @brief constructor
 ////////////////////////////////////////////////////////////////////////////////
 
-AsyncJobManager::AsyncJobManager (generate_fptr idFunc, callback_fptr callback)
-  : _lock(),
-    _jobs(),
-    generate(idFunc),
-    callback(callback) {
-}
+AsyncJobManager::AsyncJobManager(callback_fptr callback)
+    : _lock(), _jobs(), callback(callback) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief destructor
 ////////////////////////////////////////////////////////////////////////////////
 
-AsyncJobManager::~AsyncJobManager () {
+AsyncJobManager::~AsyncJobManager() {
   // remove all results that haven't been fetched
   deleteJobResults();
 }
@@ -339,16 +335,7 @@ const vector<AsyncJobResult::IdType> AsyncJobManager::byStatus (AsyncJobResult::
 /// @brief initializes an async job
 ////////////////////////////////////////////////////////////////////////////////
 
-void AsyncJobManager::initAsyncJob (HttpServerJob* job, uint64_t* jobId) {
-  if (jobId == nullptr) {
-    return;
-  }
-
-  TRI_ASSERT(job != nullptr);
-
-  *jobId = generate();
-  job->setId(*jobId);
-
+void AsyncJobManager::initAsyncJob (HttpServerJob* job) {
   AsyncCallbackContext* ctx = nullptr;
 
   bool found;
@@ -359,7 +346,7 @@ void AsyncJobManager::initAsyncJob (HttpServerJob* job, uint64_t* jobId) {
     ctx = new AsyncCallbackContext(string(hdr));
   }
 
-  AsyncJobResult ajr(*jobId,
+  AsyncJobResult ajr(job->jobId(),
                      nullptr,
                      TRI_microtime(),
                      AsyncJobResult::JOB_PENDING,
@@ -367,7 +354,7 @@ void AsyncJobManager::initAsyncJob (HttpServerJob* job, uint64_t* jobId) {
 
   WRITE_LOCKER(_lock);
 
-  _jobs.emplace(*jobId, ajr);
+  _jobs.emplace(job->jobId(), ajr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -380,7 +367,7 @@ void AsyncJobManager::finishAsyncJob (HttpServerJob* job) {
   HttpHandler* handler = job->handler();
   TRI_ASSERT(handler != nullptr);
 
-  AsyncJobResult::IdType jobId = job->id();
+  AsyncJobResult::IdType jobId = job->jobId();
 
   if (jobId == 0) {
     return;

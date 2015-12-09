@@ -32,8 +32,8 @@
 
 #include "Basics/Mutex.h"
 #include "Basics/MutexLocker.h"
-#include "Basics/logging.h"
 #include "Basics/WorkMonitor.h"
+#include "Basics/logging.h"
 #include "Dispatcher/Dispatcher.h"
 #include "HttpServer/AsyncJobManager.h"
 #include "HttpServer/HttpCommTask.h"
@@ -47,7 +47,6 @@
 using namespace arangodb;
 using namespace triagens::basics;
 using namespace triagens::rest;
-using namespace std;
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                          private static variables
@@ -57,7 +56,7 @@ using namespace std;
 /// @brief map of ChunkedTask
 ////////////////////////////////////////////////////////////////////////////////
 
-static unordered_map<uint64_t, HttpCommTask *> HttpCommTaskMap;
+static std::unordered_map<uint64_t, HttpCommTask *> HttpCommTaskMap;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief lock for the above map
@@ -77,7 +76,7 @@ static Mutex HttpCommTaskMapLock;
 /// @brief destroys an endpoint server
 ////////////////////////////////////////////////////////////////////////////////
 
-int HttpServer::sendChunk(uint64_t taskId, const string &data) {
+int HttpServer::sendChunk(uint64_t taskId, std::string const &data) {
   MUTEX_LOCKER(HttpCommTaskMapLock);
 
   auto &&it = HttpCommTaskMap.find(taskId);
@@ -86,7 +85,16 @@ int HttpServer::sendChunk(uint64_t taskId, const string &data) {
     return TRI_ERROR_TASK_NOT_FOUND;
   }
 
-  return it->second->signalChunk(data);
+  std::unique_ptr<TaskData> taskData(new TaskData());
+
+  taskData->_taskId = taskId;
+  taskData->_loop = it->second->eventLoop();
+  taskData->_type = HttpCommTask::TASK_DATA_CHUNK;
+  taskData->_data = data;
+  
+  Scheduler::SCHEDULER->signalTask(taskData);
+
+  return TRI_ERROR_NO_ERROR;
 }
 
 // -----------------------------------------------------------------------------
@@ -257,8 +265,6 @@ void HttpServer::handleConnected(TRI_socket_t s, const ConnectionInfo &info) {
 ////////////////////////////////////////////////////////////////////////////////
 
 void HttpServer::handleCommunicationClosed(HttpCommTask *task) {
-  shutdownHandlerByTask(task);
-
   {
     MUTEX_LOCKER(_commTasksLock);
     _commTasks.erase(task);
@@ -272,8 +278,6 @@ void HttpServer::handleCommunicationClosed(HttpCommTask *task) {
 ////////////////////////////////////////////////////////////////////////////////
 
 void HttpServer::handleCommunicationFailure(HttpCommTask *task) {
-  shutdownHandlerByTask(task);
-
   {
     MUTEX_LOCKER(_commTasksLock);
     _commTasks.erase(task);
@@ -283,50 +287,36 @@ void HttpServer::handleCommunicationFailure(HttpCommTask *task) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief callback if the handler received a signal
-////////////////////////////////////////////////////////////////////////////////
-
-void HttpServer::handleAsync(HttpCommTask *task) { task->processRead(); }
-
-////////////////////////////////////////////////////////////////////////////////
 /// @brief create a job for asynchronous execution (using the dispatcher)
 ////////////////////////////////////////////////////////////////////////////////
 
 bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
                                     uint64_t *jobId) {
-  // execute the handler using the dispatcher
-  unique_ptr<HttpServerJob> job(
-      new HttpServerJob(this, handler.get(), nullptr));
-  // handler now belongs to the job
-  auto h = handler.release();
 
-  // now handler.get() is a nullptr and must not be accessed
+  // create a new job
+  std::unique_ptr<Job> job(new HttpServerJob(this, handler));
 
+  // set the job identifier
   if (jobId != nullptr) {
-    try {
-      _jobManager->initAsyncJob(job.get(), jobId);
-    } catch (...) {
-      RequestStatisticsAgentSetExecuteError(h);
-      LOG_WARNING("unable to initialize job");
-      return false;
-    }
+    _jobManager->initAsyncJob(static_cast<HttpServerJob*>(job.get()));
+    *jobId = job->jobId();
   }
 
-  int error = _dispatcher->addJob(job.get());
+  // execute the handler using the dispatcher
+  int res = _dispatcher->addJob(job);
 
+  // could not add job to job queue
+  /*
   if (error != TRI_ERROR_NO_ERROR) {
-    // could not add job to job queue
-    RequestStatisticsAgentSetExecuteError(h);
+    // TODO(fc) XXX RequestStatisticsAgentSetExecuteError(h);
     LOG_WARNING("unable to add job to the job queue: %s",
                 TRI_errno_string(error));
     return false;
   }
-
-  // job now belongs to the dispatcher
-  job.release();
+  */
 
   // job is in queue now
-  return true;
+  return res == TRI_ERROR_NO_ERROR;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -344,51 +334,14 @@ bool HttpServer::handleRequest(HttpCommTask *task,
     return true;
   }
 
-  // use a dispatcher queue
-  unique_ptr<HttpServerJob> job(new HttpServerJob(this, handler.get(), task));
-
-  // handler now belongs to the job
-  auto h = handler.release();
-
-  h->RequestStatisticsAgent::transfer(job.get());
-
-  // set current job inside the task BEFORE calling addJob
-  task->setCurrentJob(job.get());
+  // use a dispatcher queue, handler belongs to the job
+  std::unique_ptr<Job> job(new HttpServerJob(this, handler));
 
   // add the job to the dispatcher
-  if (_dispatcher->addJob(job.get()) != TRI_ERROR_NO_ERROR) {
-    task->clearCurrentJob();
-    return false;
-  }
+  int res = _dispatcher->addJob(job);
 
-  // job now belongs to the dispatcher
-  job.release();
-  return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief handle the http response of the handler
-////////////////////////////////////////////////////////////////////////////////
-
-void HttpServer::handleResponse(HttpCommTask *task, HttpHandler *handler) {
-  HttpResponse *response = handler->getResponse();
-
-  if (response == nullptr) {
-    basics::Exception err(TRI_ERROR_INTERNAL,
-                          "no response received from handler", __FILE__,
-                          __LINE__);
-
-    handler->handleError(err);
-    response = handler->getResponse();
-  }
-
-  handler->RequestStatisticsAgent::transfer(task);
-
-  if (response != nullptr) {
-   task->handleResponse(response);
-  } else {
-    LOG_ERROR("cannot get any response");
-  }
+  // job is in queue now
+  return res == TRI_ERROR_NO_ERROR;
 }
 
 // -----------------------------------------------------------------------------
@@ -425,23 +378,7 @@ bool HttpServer::openEndpoint(Endpoint *endpoint) {
 void HttpServer::handleRequestDirectly(HttpCommTask *task,
                                        HttpHandler *handler) {
   handler->executeFull();
-  handleResponse(task, handler);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief shuts down a handler for a task
-////////////////////////////////////////////////////////////////////////////////
-
-void HttpServer::shutdownHandlerByTask(Task *task) {
-  auto commTask = dynamic_cast<HttpCommTask *>(task);
-  TRI_ASSERT(commTask != nullptr);
-
-  auto job = commTask->job();
-  commTask->clearCurrentJob();
-
-  if (job != nullptr) {
-    job->beginShutdown();
-  }
+  task->handleResponse(handler->getResponse());
 }
 
 // -----------------------------------------------------------------------------

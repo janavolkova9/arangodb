@@ -204,7 +204,7 @@ bool DispatcherQueue::cancelJob (uint64_t jobId) {
       }
     }
 
-    if (job != nullptr && job->id() == jobId) {
+    if (job != nullptr && job->jobId() == jobId) {
 
       // cancel the job
       try {

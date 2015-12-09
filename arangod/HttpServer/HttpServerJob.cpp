@@ -55,19 +55,10 @@ using namespace std;
 /// @brief constructs a new server job
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpServerJob::HttpServerJob (HttpServer* server,
-                              HttpHandler* handler,
-                              HttpCommTask* task) 
-  : Job("HttpServerJob"),
-    _server(server),
-    _handler(handler),
-    _task(task),
-    _refCount(task == nullptr ? 1 : 2),
-    _isInCleanup(false),
-    _isDetached(task == nullptr) {
-
-  TRI_ASSERT(_server != nullptr);
-  TRI_ASSERT(_handler != nullptr);
+HttpServerJob::HttpServerJob(HttpServer *server,
+                             WorkItem::uptr<HttpHandler> &handler)
+    : Job("HttpServerJob"), _server(server) {
+  _handler.swap(handler);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,21 +66,7 @@ HttpServerJob::HttpServerJob (HttpServer* server,
 ////////////////////////////////////////////////////////////////////////////////
 
 HttpServerJob::~HttpServerJob () {
-  if (_handler != nullptr) {
-    WorkMonitor::releaseHandler(_handler);
-  }
-}
-
-// -----------------------------------------------------------------------------
-// --SECTION--                                                    public methods
-// -----------------------------------------------------------------------------
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief whether or not the job is detached
-////////////////////////////////////////////////////////////////////////////////
-
-bool HttpServerJob::isDetached () const {
-  return _isDetached;
+  WorkMonitor::releaseHandler(_handler);
 }
 
 // -----------------------------------------------------------------------------
@@ -108,22 +85,38 @@ size_t HttpServerJob::queue () const {
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-Job::status_t HttpServerJob::work () {
-  TRI_ASSERT(_handler != nullptr); 
+Job::status_t HttpServerJob::work() {
+  TRI_ASSERT(_handler != nullptr);
 
-  LOG_TRACE("beginning job %p", (void*) this);
- 
-  HandlerWorkStack work(_handler, false);
-  this->RequestStatisticsAgent::transfer(_handler); // FMH TODO: MOVE
+  LOG_TRACE("beginning job %p", (void*)this);
 
-  // check if task is already gone
-  if (! isDetached() && _task == nullptr) {
-    return status_t(Job::JOB_DONE);
+  // start working with handler
+  HttpHandler::status_t status;
+
+  {
+    HandlerWorkStack work(_handler, false);
+    this->RequestStatisticsAgent::transfer(
+        _handler.get());  // FMH TODO(fc) XXX MOVE to WorkMonitor?
+
+    status = _handler->executeFull();
   }
 
-  HttpHandler::status_t status = _handler->executeFull();
+  LOG_TRACE("finished job %p with status %d", (void*)this, (int)status.status);
 
-  LOG_TRACE("finished job %p with status %d", (void*) this, (int) status.status);
+  /* TODO(fc) XXXX
+  if (!isDetached()) {
+  */
+    std::unique_ptr<TaskData> data(new TaskData());
+    data->_taskId = _handler->taskId();
+    data->_loop = _handler->eventLoop();
+    data->_type = HttpCommTask::TASK_DATA_RESPONSE; // TODO(fc) XXX this should be TaskData::
+    data->_response = _handler->stealResponse();
+
+    WorkMonitor::releaseHandler(_handler);
+    _handler = nullptr;
+
+    Scheduler::SCHEDULER->signalTask(data);
+    //  }
 
   return status.jobStatus();
 }
@@ -141,34 +134,19 @@ bool HttpServerJob::cancel () {
 ////////////////////////////////////////////////////////////////////////////////
 
 void HttpServerJob::cleanup (DispatcherQueue* queue) {
+  /* TODO(fc) XXXX
   if (isDetached()) {
     _server->jobManager()->finishAsyncJob(this);
   }
-  else {
-    _isInCleanup.store(true);
-    
-    TaskData* data = new TaskData;
-    data->_taskId = _handler->taskId();
-    data->_loop = _handler->eventLoop();
-    data->_type = 1;
-    data->_data = "Hallo World";
-
-    Scheduler::SCHEDULER.get()->signalTask(data);
-
-    if (_task != nullptr) {
-      _task->setHandler(_handler);
-      _handler = nullptr;
-      _task->signal();
-    }
-    
-    _isInCleanup.store(false, std::memory_order_relaxed);
-  }
+  */
 
   queue->removeJob(this);
 
+  /* ZODO(fc) XXXX
   if (--_refCount == 0) {
     delete this;
   }
+  */
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -176,18 +154,13 @@ void HttpServerJob::cleanup (DispatcherQueue* queue) {
 ////////////////////////////////////////////////////////////////////////////////
 
 void HttpServerJob::beginShutdown () {
-
-  // must wait until cleanup procedure is finished
-  while (_isInCleanup.load()) {
-    usleep(1000);
-  }
-
-  _task = nullptr;
   LOG_TRACE("shutdown job %p", (void*) this);
 
+  /* TODO(fc) XXXXX
   if (--_refCount == 0) {
     delete this;
   }
+  */
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -201,8 +174,3 @@ void HttpServerJob::handleError (triagens::basics::Exception const& ex) {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|// --SECTION--\\|/// @\\}"
-// End:

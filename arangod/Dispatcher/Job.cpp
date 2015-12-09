@@ -36,6 +36,15 @@ using namespace triagens::rest;
 using namespace std;
 
 // -----------------------------------------------------------------------------
+// --SECTION--                                                 private variables
+// -----------------------------------------------------------------------------
+
+namespace {
+std::atomic_uint_fast64_t NEXT_JOB_ID(
+    static_cast<uint64_t>(TRI_microtime() * 100000.0));
+}
+
+// -----------------------------------------------------------------------------
 // --SECTION--                                      constructors and destructors
 // -----------------------------------------------------------------------------
 
@@ -44,7 +53,9 @@ using namespace std;
 ////////////////////////////////////////////////////////////////////////////////
 
 Job::Job(string const &name)
-    : _name(name), _id(0), _queuePosition((size_t)-1) {}
+    : _jobId(NEXT_JOB_ID.fetch_add(1, memory_order_seq_cst)),
+      _name(name),
+      _queuePosition((size_t)-1) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief destructor

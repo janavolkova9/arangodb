@@ -39,6 +39,15 @@ using namespace triagens::basics;
 using namespace triagens::rest;
 
 // -----------------------------------------------------------------------------
+// --SECTION--                                                 private variables
+// -----------------------------------------------------------------------------
+
+namespace {
+std::atomic_uint_fast64_t NEXT_HANDLER_ID(
+    static_cast<uint64_t>(TRI_microtime() * 100000.0));
+}
+
+// -----------------------------------------------------------------------------
 // --SECTION--                                                 class HttpHandler
 // -----------------------------------------------------------------------------
 
@@ -51,7 +60,11 @@ using namespace triagens::rest;
 ////////////////////////////////////////////////////////////////////////////////
 
 HttpHandler::HttpHandler(HttpRequest *request)
-    : _taskId(0), _request(request), _response(nullptr), _server(nullptr) {}
+    : _handlerId(NEXT_HANDLER_ID.fetch_add(1, std::memory_order_seq_cst)),
+      _taskId(0),
+      _request(request),
+      _response(nullptr),
+      _server(nullptr) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief destructs a handler
@@ -171,6 +184,18 @@ HttpHandler::status_t HttpHandler::executeFull() {
 
     finalizeExecute();
 
+    if (_response == nullptr) {
+      Exception err(TRI_ERROR_INTERNAL, "no response received from handler",
+                    __FILE__, __LINE__);
+
+      handleError(err);
+    }
+
+    if (_response == nullptr) {
+      _response = new HttpResponse(HttpResponse::SERVER_ERROR,
+                                   HttpRequest::MinCompatibility);
+    }
+
     RequestStatisticsAgentSetRequestEnd(this);
 
     return status;
@@ -186,6 +211,11 @@ HttpHandler::status_t HttpHandler::executeFull() {
   }
 
   RequestStatisticsAgentSetRequestEnd(this);
+
+  if (_response == nullptr) {
+    _response = new HttpResponse(HttpResponse::SERVER_ERROR,
+                                 HttpRequest::MinCompatibility);
+  }
 
   return status_t(HttpHandler::HANDLER_FAILED);
 }

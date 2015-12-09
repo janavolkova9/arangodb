@@ -229,8 +229,8 @@ void SchedulerThread::destroyTask (Task* task) {
 /// @brief sends data to a task
 ////////////////////////////////////////////////////////////////////////////////
 
-void SchedulerThread::signalTask (TaskData* data) {
-  _taskData.push(data);
+void SchedulerThread::signalTask (std::unique_ptr<TaskData>& data) {
+  _taskData.push(data.release());
   _scheduler->wakeupLoop(_loop);
 }
 

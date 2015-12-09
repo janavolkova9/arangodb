@@ -626,8 +626,7 @@ void ArangoServer::buildApplicationServer () {
   // endpoint server
   // .............................................................................
 
-  _jobManager = new AsyncJobManager(&TRI_NewTickServer,
-                                    ClusterCommRestCallback);
+  _jobManager = new AsyncJobManager(ClusterCommRestCallback);
 
   _applicationEndpointServer = new ApplicationEndpointServer(_applicationServer,
                                                              _applicationScheduler,

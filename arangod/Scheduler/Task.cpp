@@ -41,7 +41,8 @@ using namespace std;
 // -----------------------------------------------------------------------------
 
 namespace {
-std::atomic_uint_fast64_t NEXT_TASK_ID(1);
+std::atomic_uint_fast64_t NEXT_TASK_ID(static_cast<uint64_t>(TRI_microtime() *
+                                                             100000.0));
 }
 
 // -----------------------------------------------------------------------------
@@ -54,8 +55,9 @@ std::atomic_uint_fast64_t NEXT_TASK_ID(1);
 
 Task::Task(std::string const &id, std::string const &name)
     : _scheduler(nullptr),
-      _loop(0), // TODO(fc) XXX this should be an "invalid" marker!
-      _taskId(NEXT_TASK_ID.fetch_add(1, memory_order_seq_cst)), _id(id),
+      _taskId(NEXT_TASK_ID.fetch_add(1, memory_order_seq_cst)),
+      _loop(0),  // TODO(fc) XXX this should be an "invalid" marker!
+      _id(id),
       _name(name) {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,18 +80,18 @@ Task::~Task() {}
 /// @brief get a JSON representation of the task
 ////////////////////////////////////////////////////////////////////////////////
 
-TRI_json_t *Task::toJson() const { // TODO(fc) XXX this should be VPack
+TRI_json_t *Task::toJson() const {  // TODO(fc) XXX this should be VPack
   TRI_json_t *json = TRI_CreateObjectJson(TRI_UNKNOWN_MEM_ZONE);
 
   if (json != nullptr) {
-    TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, json, "id",
-                          TRI_CreateStringCopyJson(TRI_UNKNOWN_MEM_ZONE,
-                                                   this->id().c_str(),
-                                                   this->id().size()));
-    TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, json, "name",
-                          TRI_CreateStringCopyJson(TRI_UNKNOWN_MEM_ZONE,
-                                                   this->name().c_str(),
-                                                   this->name().size()));
+    TRI_Insert3ObjectJson(
+        TRI_UNKNOWN_MEM_ZONE, json, "id",
+        TRI_CreateStringCopyJson(TRI_UNKNOWN_MEM_ZONE, this->id().c_str(),
+                                 this->id().size()));
+    TRI_Insert3ObjectJson(
+        TRI_UNKNOWN_MEM_ZONE, json, "name",
+        TRI_CreateStringCopyJson(TRI_UNKNOWN_MEM_ZONE, this->name().c_str(),
+                                 this->name().size()));
 
     this->getDescription(json);
   }

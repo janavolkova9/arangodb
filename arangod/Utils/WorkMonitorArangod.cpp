@@ -136,11 +136,15 @@ void WorkMonitor::destroyHandler (HttpHandler* handler) {
 /// @brief releases a handler
 ////////////////////////////////////////////////////////////////////////////////
 
-void WorkMonitor::releaseHandler (HttpHandler* handler) {
-  WorkDescription* desc = createWorkDescription(WorkType::HANDLER);
-  desc->_data.handler = handler;
+void WorkMonitor::releaseHandler (WorkItem::uptr<HttpHandler> &handler) {
+  HttpHandler* obj = handler.release();
 
-  freeWorkDescription(desc);
+  if (obj != nullptr) {
+    WorkDescription* desc = createWorkDescription(WorkType::HANDLER);
+    desc->_data.handler = obj;
+
+    freeWorkDescription(desc);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

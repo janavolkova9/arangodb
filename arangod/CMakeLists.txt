@@ -131,7 +131,6 @@ add_executable(
     Dispatcher/DispatcherQueue.cpp
     Dispatcher/DispatcherThread.cpp
     Dispatcher/Job.cpp
-    Dispatcher/RequeueTask.cpp
     FulltextIndex/fulltext-handles.cpp
     FulltextIndex/fulltext-index.cpp
     FulltextIndex/fulltext-list.cpp

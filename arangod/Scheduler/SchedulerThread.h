@@ -128,7 +128,7 @@ namespace triagens {
 /// @brief sends data to a task
 ////////////////////////////////////////////////////////////////////////////////
 
-        void signalTask (TaskData*);
+      void signalTask (std::unique_ptr<TaskData>&);
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                    Thread methods

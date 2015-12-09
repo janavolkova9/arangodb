@@ -5,7 +5,7 @@
 ///
 /// DISCLAIMER
 ///
-/// Copyright 2014 ArangoDB GmbH, Cologne, Germany
+/// Copyright 2014-2015 ArangoDB GmbH, Cologne, Germany
 /// Copyright 2004-2014 triAGENS GmbH, Cologne, Germany
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,149 +24,23 @@
 ///
 /// @author Dr. Frank Celler
 /// @author Achim Brandt
-/// @author Copyright 2014, ArangoDB GmbH, Cologne, Germany
+/// @author Copyright 2014-2015, ArangoDB GmbH, Cologne, Germany
 /// @author Copyright 2009-2013, triAGENS GmbH, Cologne, Germany
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "HttpCommTask.h"
 
+#include "Basics/MutexLocker.h"
 #include "Basics/StringBuffer.h"
 #include "Basics/logging.h"
-#include "Basics/MutexLocker.h"
 #include "HttpServer/HttpHandler.h"
 #include "HttpServer/HttpHandlerFactory.h"
 #include "HttpServer/HttpServer.h"
-#include "HttpServer/HttpServerJob.h"
 #include "Scheduler/Scheduler.h"
 
 using namespace arangodb;
 using namespace triagens::basics;
 using namespace triagens::rest;
-using namespace std;
-
-// -----------------------------------------------------------------------------
-// --SECTION--                                            class AsyncChunkedTask
-// -----------------------------------------------------------------------------
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief constructs a new async chunked task
-////////////////////////////////////////////////////////////////////////////////
-
-AsyncChunkedTask::AsyncChunkedTask (HttpCommTask* output)
-  : Task("AsyncChunkedTask"),
-    _output(output),
-    _done(false),
-    _data(nullptr),
-    _dataLock(),
-    _watcher(nullptr) {
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief destructs an async chunked task
-////////////////////////////////////////////////////////////////////////////////
-
-AsyncChunkedTask::~AsyncChunkedTask () {
-  delete _data;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief adds a chunk and signal next part
-////////////////////////////////////////////////////////////////////////////////
-
-int AsyncChunkedTask::signalChunk (std::string const& data) {
-  {
-    MUTEX_LOCKER(_dataLock);
-
-    if (data.empty()) {
-      _done = true;
-    }
-    else {
-      if (_data == nullptr) {
-        _data = new StringBuffer(TRI_UNKNOWN_MEM_ZONE, data.size());
-      }
-
-      TRI_ASSERT(_data != nullptr);
-
-      _data->appendHex(data.size());
-      _data->appendText(TRI_CHAR_LENGTH_PAIR("\r\n"));
-      _data->appendText(data.c_str(), data.size());
-      _data->appendText(TRI_CHAR_LENGTH_PAIR("\r\n"));
-    }
-  }
-
-  signal();
-
-  return TRI_ERROR_NO_ERROR;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief setup
-////////////////////////////////////////////////////////////////////////////////
-
-bool AsyncChunkedTask::setup (Scheduler* scheduler, EventLoop loop) {
-  this->_scheduler = scheduler;
-  this->_loop = loop;
-
-  // will throw if it goes wrong...
-  _watcher = scheduler->installAsyncEvent(loop, this);
-
-  return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief cleanup
-////////////////////////////////////////////////////////////////////////////////
-
-void AsyncChunkedTask::cleanup () {
-  if (_scheduler != nullptr) {
-    if (_watcher != nullptr) {
-      _scheduler->uninstallEvent(_watcher);
-    }
-  }
-
-  _watcher = nullptr;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief handles the event
-////////////////////////////////////////////////////////////////////////////////
-
-bool AsyncChunkedTask::handleEvent (EventToken token,
-                                    EventType revents) {
-  if (_watcher == token && (revents & EVENT_ASYNC)) {
-    return handleAsync();
-  }
-
-  return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief handles signal if a new chunk has arrived
-////////////////////////////////////////////////////////////////////////////////
-
-bool AsyncChunkedTask::handleAsync () {
-  MUTEX_LOCKER(_dataLock);
-
-  if (_data != nullptr) {
-    _output->sendChunk(_data);
-    _data = nullptr;
-  }
-
-  if (_done) {
-    _output->finishedChunked();
-    _done = false;
-  }
-
-  return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief handles signal if a new chunk has arrived
-////////////////////////////////////////////////////////////////////////////////
-
-void AsyncChunkedTask::signal () {
-  _scheduler->sendAsync(_watcher);
-}
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                class HttpCommTask
@@ -192,7 +66,6 @@ HttpCommTask::HttpCommTask (HttpServer* server,
     SocketTask(socket, keepAliveTimeout),
     _connectionInfo(info),
     _server(server),
-    _watcher(nullptr),
     _job(nullptr),
     _handler(nullptr),
     _writeBuffers(),
@@ -215,7 +88,6 @@ HttpCommTask::HttpCommTask (HttpServer* server,
     _startPosition(0),
     _sinceCompactification(0),
     _originalBodyLength(0),
-    _chunkedTask(this),
     _setupDone(false) {
 
   LOG_TRACE(
@@ -241,8 +113,8 @@ HttpCommTask::HttpCommTask (HttpServer* server,
 
 HttpCommTask::~HttpCommTask () {
   if (_job != nullptr) {
-    _job->beginShutdown();
-    clearCurrentJob();
+    // TODO    _job->beginShutdown();
+    //     clearCurrentJob();
   }
 
   if (_handler != nullptr) {
@@ -268,14 +140,6 @@ HttpCommTask::~HttpCommTask () {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                    public methods
 // -----------------------------------------------------------------------------
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief signals a new chunk
-////////////////////////////////////////////////////////////////////////////////
-
-int HttpCommTask::signalChunk (const string& data) {
-  return _chunkedTask.signalChunk(data);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief handles response
@@ -366,8 +230,8 @@ bool HttpCommTask::processRead () {
       _readPosition = ptr - _readBuffer->c_str() + 4;
 
       LOG_TRACE("HTTP READ FOR %p: %s", (void*) this,
-                string(_readBuffer->c_str() + _startPosition,
-                       _readPosition - _startPosition).c_str());
+                std::string(_readBuffer->c_str() + _startPosition,
+                            _readPosition - _startPosition).c_str());
 
       // check that we know, how to serve this request
       // and update the connection information, i. e. client and server addresses and ports
@@ -490,7 +354,7 @@ bool HttpCommTask::processRead () {
           }
 
           LOG_WARNING("got corrupted HTTP request '%s'",
-                      string(_readBuffer->c_str() + _startPosition, l).c_str());
+                      std::string(_readBuffer->c_str() + _startPosition, l).c_str());
 
           // bad request, method not allowed
           HttpResponse response(HttpResponse::METHOD_NOT_ALLOWED, getCompatibility());
@@ -571,7 +435,7 @@ bool HttpCommTask::processRead () {
     // read "bodyLength" from read buffer and add this body to "httpRequest"
     _request->setBody(_readBuffer->c_str() + _bodyPosition, _bodyLength);
 
-    LOG_TRACE("%s", string(_readBuffer->c_str() + _bodyPosition, _bodyLength).c_str());
+    LOG_TRACE("%s", std::string(_readBuffer->c_str() + _bodyPosition, _bodyLength).c_str());
 
     // remove body from read buffer and reset read position
     _readRequestBody = false;
@@ -950,7 +814,7 @@ void HttpCommTask::processRequest (uint32_t compatibility) {
   std::string const& acceptEncoding = _request->header("accept-encoding", found);
 
   if (found) {
-    if (acceptEncoding.find("deflate") != string::npos) {
+    if (acceptEncoding.find("deflate") != std::string::npos) {
       _acceptDeflate = true;
     }
   }
@@ -1116,19 +980,10 @@ bool HttpCommTask::setup (Scheduler* scheduler, EventLoop loop) {
     return false;
   }
 
-  this->_scheduler = scheduler;
-  this->_loop = loop;
+  _scheduler = scheduler;
+  _loop = loop;
 
-  // will throw if it goes wrong...
-  _watcher = scheduler->installAsyncEvent(loop, this);
-
-  ok = _chunkedTask.setup(scheduler, loop);
-
-  if (! ok) {
-    return false;
-  }
-
-  return ok;
+  return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1137,16 +992,6 @@ bool HttpCommTask::setup (Scheduler* scheduler, EventLoop loop) {
 
 void HttpCommTask::cleanup () {
   SocketTask::cleanup();
-
-  if (_scheduler != nullptr) {
-    if (_watcher != nullptr) {
-      _scheduler->uninstallEvent(_watcher);
-    }
-  }
-
-  _watcher = nullptr;
-
-  _chunkedTask.cleanup();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1156,15 +1001,6 @@ void HttpCommTask::cleanup () {
 bool HttpCommTask::handleEvent (EventToken token,
                                 EventType events) {
   bool result = SocketTask::handleEvent(token, events);
-
-  if (result) {
-    if (_watcher == token && (events & EVENT_ASYNC)) {
-      result = handleAsync();
-    }
-    else {
-      result = true;
-    }
-  }
 
   if (_clientClosed) {
     _scheduler->destroyTask(this);
@@ -1180,45 +1016,58 @@ bool HttpCommTask::handleEvent (EventToken token,
 #include <iostream>
 
 void HttpCommTask::signalTask (TaskData* data) {
+
+  // sanity check
+  if (data->_type == TASK_DATA_RESPONSE) {
+    _job = nullptr;
+
+    handleResponse(data->_response);
+    _handler = nullptr;
+
+    processRead();
+  }
+  else if (data->_type == TASK_DATA_CHUNK) {
+    size_t len = data->_data.size();
+
+    if (0 == len) {
+      finishedChunked();
+    }
+    else {
+      StringBuffer* buffer = new StringBuffer(TRI_UNKNOWN_MEM_ZONE, len);
+
+      TRI_ASSERT(buffer != nullptr);
+
+      buffer->appendHex(len);
+      buffer->appendText(TRI_CHAR_LENGTH_PAIR("\r\n"));
+      buffer->appendText(data->_data.c_str(), len);
+      buffer->appendText(TRI_CHAR_LENGTH_PAIR("\r\n"));
+
+      sendChunk(buffer); // TODO(fc) XXX take ownership
+    }
+  }
+
+  // sanity check
+  else {
+    _scheduler->destroyTask(this);
+    return;
+  }
+
+
+  /* TODO(fc) XXXX
+
+
   std::cout << "ID " << data->_taskId << " "
             << "LOOP " << data->_loop << " "
             << "TYPE " << data->_type << " "
             << "DATA " << data->_data << "\n";
-}
 
-// -----------------------------------------------------------------------------
-// --SECTION--                                                 AsyncTask methods
-// -----------------------------------------------------------------------------
 
-////////////////////////////////////////////////////////////////////////////////
-/// {@inheritDoc}
-////////////////////////////////////////////////////////////////////////////////
-
-bool HttpCommTask::handleAsync () {
   TRI_ASSERT(_job != nullptr);
-  TRI_ASSERT(_handler != nullptr);
+  TRI_ASSERT(_handler == nullptr);
   TRI_ASSERT(! _job->hasHandler());
+  */
 
-  _job->beginShutdown();
-  _job = nullptr;
-
-  _server->handleResponse(this, _handler);
-  WorkMonitor::releaseHandler(_handler);
-  _handler = nullptr;
-
-  _server->handleAsync(this);
-
-  return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief signals the task
-///
-/// Note that this method can only be called after the task has been registered.
-////////////////////////////////////////////////////////////////////////////////
-
-void HttpCommTask::signal () {
-  _scheduler->sendAsync(_watcher);
+  // TODO _job->beginShutdown();
 }
 
 // -----------------------------------------------------------------------------
