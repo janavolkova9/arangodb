@@ -74,8 +74,27 @@ namespace triagens {
             _collection(collection),
             _server(server),
             _ownName(ownName),
-            _queryId(queryId) {
+            _queryId(queryId),
+            _isResponsibleForInitCursor(true) {
           // note: server, ownName and queryId may be empty and filled later
+        }
+ 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief whether or not this node will forward initializeCursor or shutDown
+/// requests
+////////////////////////////////////////////////////////////////////////////////
+
+        void isResponsibleForInitCursor (bool value) {
+          _isResponsibleForInitCursor = value;
+        }
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief whether or not this node will forward initializeCursor or shutDown
+/// requests
+////////////////////////////////////////////////////////////////////////////////
+
+        bool isResponsibleForInitCursor () const {
+          return _isResponsibleForInitCursor;
         }
 
         RemoteNode (ExecutionPlan*, triagens::basics::Json const& base);
@@ -221,6 +240,12 @@ namespace triagens {
 
         std::string _queryId;
 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief whether or not this node will forward initializeCursor and shutDown
+/// requests
+////////////////////////////////////////////////////////////////////////////////
+
+        bool _isResponsibleForInitCursor;
     };
 
 // -----------------------------------------------------------------------------
@@ -347,13 +372,15 @@ namespace triagens {
                         Collection const* collection, 
                         VariableId const varId,
                         VariableId const alternativeVarId,
-                        bool createKeys)
+                        bool createKeys,
+                        bool allowKeyConversionToObject)
           : ExecutionNode(plan, id),
             _vocbase(vocbase),
             _collection(collection),
             _varId(varId),
             _alternativeVarId(alternativeVarId),
-            _createKeys(createKeys) {
+            _createKeys(createKeys),
+            _allowKeyConversionToObject(allowKeyConversionToObject) {
         }
         
         DistributeNode (ExecutionPlan* plan, 
@@ -361,8 +388,9 @@ namespace triagens {
                         TRI_vocbase_t* vocbase,
                         Collection const* collection, 
                         VariableId const varId,
-                        bool createKeys)
-          : DistributeNode(plan, id, vocbase, collection, varId, varId, createKeys) {
+                        bool createKeys,
+                        bool allowKeyConversionToObject)
+          : DistributeNode(plan, id, vocbase, collection, varId, varId, createKeys, allowKeyConversionToObject) {
           // just delegates to the other constructor
         }
 
@@ -392,7 +420,7 @@ namespace triagens {
         ExecutionNode* clone (ExecutionPlan* plan,
                               bool withDependencies,
                               bool withProperties) const override final {
-          auto c = new DistributeNode(plan, _id, _vocbase, _collection, _varId, _alternativeVarId, _createKeys);
+          auto c = new DistributeNode(plan, _id, _vocbase, _collection, _varId, _alternativeVarId, _createKeys, _allowKeyConversionToObject);
           
           cloneHelper(c, plan, withDependencies, withProperties);
 
@@ -453,6 +481,12 @@ namespace triagens {
 ////////////////////////////////////////////////////////////////////////////////
 
         bool const _createKeys;
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief allow conversion of key to object
+////////////////////////////////////////////////////////////////////////////////
+
+        bool const _allowKeyConversionToObject;
 
     };
 

@@ -696,7 +696,7 @@ AqlValue Expression::executeSimpleExpressionIndexedAccess (AstNode const* node,
       return AqlValue(new Json(TRI_UNKNOWN_MEM_ZONE, j.steal()));
     }
     else if (indexResult.isString()) {
-      auto&& value = indexResult.toString();
+      auto value(std::move(indexResult.toString()));
       indexResult.destroy();
 
       try {
@@ -874,8 +874,8 @@ AqlValue Expression::executeSimpleExpressionReference (AstNode const* node,
       return argv->getValueReference(startPos, regs[i]).shallowClone();
     }
   }
-  std::string msg("unhandled type '");
-  msg.append(node->getTypeString()); 
+  std::string msg("variable not found '");
+  msg.append(v->name); 
   msg.append("' in executeSimpleExpression()");
   THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_INTERNAL, msg.c_str());
 }

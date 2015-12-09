@@ -50,6 +50,7 @@ bool ConditionFinder::before (ExecutionNode* en) {
     case EN::UPDATE:
     case EN::UPSERT:
     case EN::RETURN:
+    case EN::TRAVERSAL:
       // in these cases we simply ignore the intermediate nodes, note
       // that we have taken care of nodes that could throw exceptions
       // above.
@@ -67,7 +68,7 @@ bool ConditionFinder::before (ExecutionNode* en) {
       return true;
 
     case EN::FILTER: {
-       std::vector<Variable const*>&& invars = en->getVariablesUsedHere();
+       std::vector<Variable const*> invars(std::move(en->getVariablesUsedHere()));
        TRI_ASSERT(invars.size() == 1);
        // register which variable is used in a FILTER
        _filters.emplace(invars[0]->id);

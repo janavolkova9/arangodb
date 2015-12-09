@@ -191,8 +191,11 @@ class FoxxService {
     }
 
     let lib = this.manifest.lib || '.';
-    this.main = new Module(`foxx:${data.mount}`);
-    this.main.filename = path.resolve(this.root, this.path, lib, '.foxx');
+    let moduleRoot = path.resolve(this.root, this.path, lib);
+    this.moduleCache = {};
+    this.main = new Module(`foxx:${data.mount}`, undefined, this.moduleCache);
+    this.main.root = moduleRoot;
+    this.main.filename = path.resolve(moduleRoot, '.foxx');
     this.main.context.applicationContext = new AppContext(this);
     this.main.context.console = require('org/arangodb/foxx/console')(this.mount);
   }
@@ -346,6 +349,7 @@ class FoxxService {
     filename = path.resolve(this.main.context.__dirname, filename);
 
     var module = new Module(filename, this.main);
+    module.context.console = this.main.context.console;
     module.context.applicationContext = _.extend(
       new AppContext(this.main.context.applicationContext._service),
       this.main.context.applicationContext,

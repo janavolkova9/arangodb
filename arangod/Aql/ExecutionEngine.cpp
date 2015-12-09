@@ -44,6 +44,7 @@
 #include "Aql/QueryRegistry.h"
 #include "Aql/SortBlock.h"
 #include "Aql/SubqueryBlock.h"
+#include "Aql/TraversalBlock.h"
 #include "Aql/WalkerWorker.h"
 #include "Basics/Exceptions.h"
 #include "Basics/logging.h"
@@ -75,6 +76,9 @@ static ExecutionBlock* CreateBlock (ExecutionEngine* engine,
     case ExecutionNode::ENUMERATE_LIST: {
       return new EnumerateListBlock(engine,
                                     static_cast<EnumerateListNode const*>(en));
+    }
+    case ExecutionNode::TRAVERSAL: {
+      return new TraversalBlock(engine, static_cast<TraversalNode const*>(en));
     }
     case ExecutionNode::CALCULATION: {
       return new CalculationBlock(engine,
@@ -224,7 +228,7 @@ struct Instanciator final : public WalkerWorker<ExecutionNode> {
   ExecutionBlock*  root;
   std::unordered_map<ExecutionNode*, ExecutionBlock*> cache;
 
-  Instanciator (ExecutionEngine* engine) 
+  explicit Instanciator (ExecutionEngine* engine) 
     : engine(engine),
       root(nullptr) {
   }
@@ -473,7 +477,8 @@ struct CoordinatorInstanciator : public WalkerWorker<ExecutionNode> {
 /// @brief generatePlanForOneShard
 ////////////////////////////////////////////////////////////////////////////////
 
-  triagens::basics::Json generatePlanForOneShard (EngineInfo const& info,
+  triagens::basics::Json generatePlanForOneShard (size_t nr,
+                                                  EngineInfo const& info,
                                                   QueryId& connectedId,
                                                   std::string const& shardId,
                                                   bool verbose) {
@@ -492,6 +497,9 @@ struct CoordinatorInstanciator : public WalkerWorker<ExecutionNode> {
         static_cast<RemoteNode*>(clone)->server("server:" + triagens::arango::ServerState::instance()->getId());
         static_cast<RemoteNode*>(clone)->ownName(shardId);
         static_cast<RemoteNode*>(clone)->queryId(connectedId);
+        // only one of the remote blocks is responsible for forwarding the initializeCursor and shutDown requests
+        // for simplicity, we always use the first remote block if we have more than one
+        static_cast<RemoteNode*>(clone)->isResponsibleForInitCursor(nr == 0);
       }
     
       if (previous != nullptr) {
@@ -548,7 +556,7 @@ struct CoordinatorInstanciator : public WalkerWorker<ExecutionNode> {
     optimizerOptions.set("rules", optimizerOptionsRules);
     options.set("optimizer", optimizerOptions);
     result.set("options", options);
-    std::unique_ptr<std::string> body(new std::string(triagens::basics::JsonHelper::toString(result.json())));
+    std::shared_ptr<std::string const> body(new std::string(triagens::basics::JsonHelper::toString(result.json())));
     
     // std::cout << "GENERATED A PLAN FOR THE REMOTE SERVERS: " << *(body.get()) << "\n";
     
@@ -564,8 +572,7 @@ struct CoordinatorInstanciator : public WalkerWorker<ExecutionNode> {
                                 "shard:" + shardId,  
                                 triagens::rest::HttpRequest::HTTP_REQUEST_POST, 
                                 url,
-                                body.release(),
-                                true,
+                                body,
                                 headers,
                                 nullptr,
                                 30.0);
@@ -609,7 +616,7 @@ struct CoordinatorInstanciator : public WalkerWorker<ExecutionNode> {
             = triagens::basics::StringUtils::itoa(info.idOfRemoteNode)
             + ":" + res->shardID;
           if (info.part == triagens::aql::PART_MAIN) {
-            queryIds.emplace(theID, queryId+"*");
+            queryIds.emplace(theID, queryId + "*");
           }
           else {
             queryIds.emplace(theID, queryId);
@@ -654,10 +661,11 @@ struct CoordinatorInstanciator : public WalkerWorker<ExecutionNode> {
     TRI_ASSERT(cc != nullptr);
 
     // iterate over all shards of the collection
+    size_t nr = 0;
     for (auto& shardId : collection->shardIds()) {
       // inject the current shard id into the collection
       collection->setCurrentShard(shardId);
-      auto jsonPlan = generatePlanForOneShard(info, connectedId, shardId, true);
+      auto jsonPlan = generatePlanForOneShard(nr++, info, connectedId, shardId, true);
 
       distributePlanToShard(coordTransactionID, info, collection, connectedId, shardId, jsonPlan.steal());
     }
@@ -766,7 +774,7 @@ struct CoordinatorInstanciator : public WalkerWorker<ExecutionNode> {
         engine->root(eb);
    
         // put it into our cache:
-        cache.emplace(std::make_pair((*en), eb));
+        cache.emplace(*en, eb);
       }
 
       TRI_ASSERT(engine->root() != nullptr);

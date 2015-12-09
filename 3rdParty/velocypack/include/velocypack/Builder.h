@@ -96,7 +96,7 @@ class Builder {
     if (_pos + len <= _size) {
       return;  // All OK, we can just increase tos->pos by len
     }
-    checkValueLength(_pos + len);
+    checkOverflow(_pos + len);
 
     _buffer->prealloc(len);
     _start = _buffer->data();
@@ -158,25 +158,23 @@ class Builder {
   ~Builder() {}
 
   Builder(Builder const& that)
-      : _buffer(that._buffer),
+      : _buffer(new Buffer<uint8_t>(*that._buffer)),
         _start(_buffer->data()),
         _size(_buffer->size()),
         _pos(that._pos),
         _stack(that._stack),
         _index(that._index),
         options(that.options) {
-    if (that._buffer == nullptr) {
-      throw Exception(Exception::InternalError,
-                      "Buffer of Builder is already gone");
+    if (options == nullptr) {
+      throw Exception(Exception::InternalError, "Options cannot be a nullptr");
     }
   }
 
   Builder& operator=(Builder const& that) {
-    if (that._buffer == nullptr) {
-      throw Exception(Exception::InternalError,
-                      "Buffer of Builder is already gone");
+    if (that.options == nullptr) {
+      throw Exception(Exception::InternalError, "Options cannot be a nullptr");
     }
-    _buffer = that._buffer;
+    _buffer.reset(new Buffer<uint8_t>(*that._buffer));
     _start = _buffer->data();
     _size = _buffer->size();
     _pos = that._pos;
@@ -187,12 +185,11 @@ class Builder {
   }
 
   Builder(Builder&& that) {
-    if (that._buffer == nullptr) {
-      throw Exception(Exception::InternalError,
-                      "Buffer of Builder is already gone");
+    if (that.options == nullptr) {
+      throw Exception(Exception::InternalError, "Options cannot be a nullptr");
     }
     _buffer = that._buffer;
-    that._buffer.reset();
+    that._buffer.reset(new Buffer<uint8_t>());
     _start = _buffer->data();
     _size = _buffer->size();
     _pos = that._pos;
@@ -201,18 +198,17 @@ class Builder {
     _index.clear();
     _index.swap(that._index);
     options = that.options;
-    that._start = nullptr;
+    that._start = that._buffer->data();
     that._size = 0;
     that._pos = 0;
   }
 
   Builder& operator=(Builder&& that) {
-    if (that._buffer == nullptr) {
-      throw Exception(Exception::InternalError,
-                      "Buffer of Builder is already gone");
+    if (that.options == nullptr) {
+      throw Exception(Exception::InternalError, "Options cannot be a nullptr");
     }
     _buffer = that._buffer;
-    that._buffer.reset();
+    that._buffer.reset(new Buffer<uint8_t>());
     _start = _buffer->data();
     _size = _buffer->size();
     _pos = that._pos;
@@ -221,7 +217,7 @@ class Builder {
     _index.clear();
     _index.swap(that._index);
     options = that.options;
-    that._start = nullptr;
+    that._start = that._buffer->data();
     that._size = 0;
     that._pos = 0;
     return *this;
@@ -230,19 +226,17 @@ class Builder {
   // get a const reference to the Builder's Buffer object
   std::shared_ptr<Buffer<uint8_t>> const& buffer() const { return _buffer; }
 
-  uint8_t const* data() const {
-    if (_buffer == nullptr) {
-      throw Exception(Exception::InternalError,
-                      "Buffer of Builder is already gone");
-    }
+  std::shared_ptr<Buffer<uint8_t>> steal() {
+    std::shared_ptr<Buffer<uint8_t>> res = std::move(_buffer);
+    _buffer.reset(new Buffer<uint8_t>());
+    return res;
+  }
 
+  uint8_t const* data() const {
     return _buffer.get()->data();
   }
 
   std::string toString() const;
-
-  // get a non-const reference to the Builder's Buffer object
-  std::shared_ptr<Buffer<uint8_t>>& buffer() { return _buffer; }
 
   static Builder clone(Slice const& slice,
                        Options const* options = &Options::Defaults) {
@@ -355,6 +349,8 @@ class Builder {
     return *this;
   }
 
+private:
+
   void addNull() {
     reserveSpace(1);
     _start[_pos++] = 0x18;
@@ -427,12 +423,19 @@ class Builder {
     return target;
   }
 
-  inline void addArray(bool unindexed = false) {
-    addCompoundValue(unindexed ? 0x13 : 0x06);
+ public:
+
+  inline void openArray(bool unindexed = false) {
+    openCompoundValue(unindexed ? 0x13 : 0x06);
   }
 
-  // this is an alias for addArray()
-  inline void openArray(bool unindexed = false) {
+  inline void openObject(bool unindexed = false) {
+    openCompoundValue(unindexed ? 0x14 : 0x0b);
+  }
+
+ private:
+
+  inline void addArray(bool unindexed = false) {
     addCompoundValue(unindexed ? 0x13 : 0x06);
   }
 
@@ -440,12 +443,6 @@ class Builder {
     addCompoundValue(unindexed ? 0x14 : 0x0b);
   }
 
-  // this is an alias for addObject()
-  inline void openObject(bool unindexed = false) {
-    addCompoundValue(unindexed ? 0x14 : 0x0b);
-  }
-
- private:
   template <typename T>
   uint8_t* addInternal(T const& sub) {
     bool haveReported = false;
@@ -487,8 +484,7 @@ class Builder {
             options->attributeTranslator->translate(attrName);
 
         if (translated != nullptr) {
-          set(Slice(options->attributeTranslator->translate(attrName),
-                    options));
+          set(Slice(translated, options));
           return set(sub);
         }
         // otherwise fall through to regular behavior
@@ -516,6 +512,28 @@ class Builder {
     _start[_pos++] = type;
     memset(_start + _pos, 0, 8);
     _pos += 8;  // Will be filled later with bytelength and nr subs
+  }
+
+  void openCompoundValue(uint8_t type) {
+    bool haveReported = false;
+    if (!_stack.empty()) {
+      ValueLength& tos = _stack.back();
+      if (_start[tos] != 0x06 && _start[tos] != 0x13) {
+        throw Exception(Exception::BuilderNeedOpenCompound);
+      }
+      reportAdd(tos);
+      haveReported = true;
+    }
+    try {
+      addCompoundValue(type);
+    } catch (...) {
+      // clean up in case of an exception
+      if (haveReported) {
+        cleanupAdd();
+      }
+      throw;
+    }
+
   }
 
   uint8_t* set(Value const& item);
@@ -589,6 +607,55 @@ class Builder {
   }
 
   void checkAttributeUniqueness(Slice const& obj) const;
+};
+
+struct BuilderNonDeleter {
+  void operator()(Builder*) {
+  }
+};
+
+// convenience class scope guard for building objects
+struct BuilderContainer {
+  BuilderContainer (Builder* builder) : builder(builder) {}
+
+  Builder& operator*() {
+    return *builder;
+  }
+  Builder const& operator*() const {
+    return *builder;
+  }
+  Builder* operator->() {
+    return builder;
+  }
+  Builder const* operator->() const {
+    return builder;
+  }
+  Builder* builder;
+};
+
+struct ObjectBuilder final : public BuilderContainer, public NoHeapAllocation {
+  ObjectBuilder(Builder* builder, bool allowUnindexed = false) : BuilderContainer(builder) {
+    builder->openObject(allowUnindexed);
+  }
+  ObjectBuilder(Builder* builder, std::string const& attributeName, bool allowUnindexed = false) : BuilderContainer(builder) {
+    builder->add(attributeName, Value(ValueType::Object, allowUnindexed)); 
+  }
+  ObjectBuilder(Builder* builder, char const* attributeName, bool allowUnindexed = false) : BuilderContainer(builder) {
+    builder->add(attributeName, Value(ValueType::Object, allowUnindexed)); 
+  }
+  ~ObjectBuilder() {
+    builder->close();
+  }
+};
+
+// convenience class scope guard for building arrays
+struct ArrayBuilder final : public BuilderContainer, public NoHeapAllocation {
+  ArrayBuilder(Builder* builder, bool allowUnindexed = false) : BuilderContainer(builder) {
+    builder->openArray(allowUnindexed);
+  }
+  ~ArrayBuilder() {
+    builder->close();
+  }
 };
 
 }  // namespace arangodb::velocypack

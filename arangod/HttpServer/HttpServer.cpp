@@ -135,7 +135,7 @@ HttpServer::~HttpServer() {
 ////////////////////////////////////////////////////////////////////////////////
 
 HttpCommTask *HttpServer::createCommTask(TRI_socket_t s,
-                                         const ConnectionInfo &info) {
+                                         ConnectionInfo const&info) {
   return new HttpCommTask(this, s, info, _keepAliveTimeout);
 }
 
@@ -147,7 +147,7 @@ HttpCommTask *HttpServer::createCommTask(TRI_socket_t s,
 /// @brief add the endpoint list
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServer::setEndpointList(const EndpointList *list) {
+void HttpServer::setEndpointList(EndpointList const*list) {
   _endpointList = list;
 }
 
@@ -236,7 +236,7 @@ void HttpServer::stop() {
 /// @brief handles connection request
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServer::handleConnected(TRI_socket_t s, const ConnectionInfo &info) {
+void HttpServer::handleConnected(TRI_socket_t s, ConnectionInfo const&info) {
   HttpCommTask *task = createCommTask(s, info);
 
   try {

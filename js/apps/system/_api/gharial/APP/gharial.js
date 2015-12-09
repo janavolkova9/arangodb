@@ -274,7 +274,7 @@
 /// @RESTRETURNCODE{409}
 /// Returned if there is a conflict storing the graph.
 /// This can occur either if a graph with this name is already stored, or if there is one edge definition with a
-/// the same [edge collection](../Glossary/index.html#edge-collection)
+/// the same [edge collection](../Glossary/README.md#edge-collection)
 /// but a different signature used in any other graph.
 /// 
 /// @EXAMPLES
@@ -436,15 +436,12 @@
 /// @EXAMPLE_ARANGOSH_RUN{HttpGharialDrop}
 ///   var examples = require("org/arangodb/graph-examples/example-graph.js");
 ///   examples.loadGraph("social");
-///   var url = "/_api/gharial/social";
+///   var url = "/_api/gharial/social?dropCollections=true";
 ///   var response = logCurlRequest('DELETE', url);
 ///
 ///   assert(response.code === 200);
 ///
 ///   logJsonResponse(response);
-///   db._drop("male");
-///   db._drop("female");
-///   db._drop("relation");
 /// ~ examples.dropGraph("social");
 /// @END_EXAMPLE_ARANGOSH_RUN
 /// @endDocuBlock
@@ -1629,7 +1626,7 @@
 /// Creates a new edge in the collection.
 /// Within the body the has to contain a *\_from* and *\_to* value referencing to valid vertices in the graph.
 /// Furthermore the edge has to be valid in the definition of this
-/// [edge collection](../Glossary/index.html#edge-collection).
+/// [edge collection](../Glossary/README.md#edge-collection).
 /// 
 /// @RESTURLPARAMETERS
 /// 

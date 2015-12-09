@@ -219,7 +219,7 @@ static void FreeOperations (TRI_transaction_t* trx) {
           auto it2 = stats.find(fid);
 
           if (it2 == stats.end()) {
-            stats.insert(it2, std::make_pair(fid, std::make_pair(1, TRI_DF_ALIGN_BLOCK(marker->_size))));
+            stats.emplace(fid, std::make_pair(1, TRI_DF_ALIGN_BLOCK(marker->_size)));
           }
           else {
             (*it2).second.first++;
@@ -398,14 +398,14 @@ static int LockCollection (TRI_transaction_collection_t* trxCollection,
             nestingLevel,
             "read-locking collection %llu",
             (unsigned long long) trxCollection->_cid);
-    res = document->beginReadTimed(trx->_timeout, TRI_TRANSACTION_DEFAULT_SLEEP_DURATION);
+    res = document->beginReadTimed(trx->_timeout, TRI_TRANSACTION_DEFAULT_SLEEP_DURATION * 3);
   }
   else {
     LOG_TRX(trx,
             nestingLevel,
             "write-locking collection %llu",
             (unsigned long long) trxCollection->_cid);
-    res = document->beginWriteTimed(trx->_timeout, TRI_TRANSACTION_DEFAULT_SLEEP_DURATION * 50);
+    res = document->beginWriteTimed(trx->_timeout, TRI_TRANSACTION_DEFAULT_SLEEP_DURATION * 3);
   }
 
   if (res == TRI_ERROR_NO_ERROR) {

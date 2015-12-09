@@ -89,7 +89,7 @@ class Dumper {
 
   static std::string toString(Slice const* slice,
                               Options const* options = &Options::Defaults) {
-    return std::move(toString(*slice, options));
+    return toString(*slice, options);
   }
 
   void append(Slice const& slice) { dumpValue(&slice); }
@@ -111,6 +111,8 @@ class Dumper {
   }
 
   void appendUInt(uint64_t);
+
+  void appendDouble(double);
 
  private:
   void dumpInteger(Slice const*);

@@ -1,4 +1,3 @@
-////////////////////////////////////////////////////////////////////////////////
 /// @brief Infrastructure for ExecutionPlans
 ///
 /// @file arangod/Aql/ExecutionNode.cpp
@@ -31,6 +30,7 @@
 #include "Aql/ClusterNodes.h"
 #include "Aql/Collection.h"
 #include "Aql/ExecutionPlan.h"
+#include "Aql/TraversalNode.h"
 #include "Aql/IndexNode.h"
 #include "Aql/ModificationNodes.h"
 #include "Aql/SortNode.h"
@@ -80,7 +80,8 @@ std::unordered_map<int, std::string const> const ExecutionNode::TypeNames{
   { static_cast<int>(DISTRIBUTE),                   "DistributeNode" },
   { static_cast<int>(GATHER),                       "GatherNode" },
   { static_cast<int>(NORESULTS),                    "NoResultsNode" },
-  { static_cast<int>(UPSERT),                       "UpsertNode" }
+  { static_cast<int>(UPSERT),                       "UpsertNode" },
+  { static_cast<int>(TRAVERSAL),                    "TraversalNode" }
 };
           
 // -----------------------------------------------------------------------------
@@ -128,7 +129,7 @@ void ExecutionNode::getSortElements (SortElementVector& elements,
   for (size_t i = 0; i < len; i++) {
     triagens::basics::Json oneJsonElement = jsonElements.at(static_cast<int>(i));
     bool ascending = JsonHelper::checkAndGetBooleanValue(oneJsonElement.json(), "ascending");
-    Variable *v = varFromJson(plan->getAst(), oneJsonElement, "inVariable");
+    Variable* v = varFromJson(plan->getAst(), oneJsonElement, "inVariable");
     elements.emplace_back(v, ascending);
   }
 }
@@ -245,6 +246,8 @@ ExecutionNode* ExecutionNode::fromJsonFactory (ExecutionPlan* plan,
       return new ScatterNode(plan, oneNode);
     case DISTRIBUTE: 
       return new DistributeNode(plan, oneNode);
+    case TRAVERSAL:
+      return new TraversalNode(plan, oneNode);
     case ILLEGAL: {
       THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_INTERNAL, "invalid node type");
     }
@@ -288,7 +291,7 @@ ExecutionNode::ExecutionNode (ExecutionPlan* plan,
     RegisterId registerId = JsonHelper::checkAndGetNumericValue<RegisterId>      (jsonVarInfo.json(), "RegisterId");
     unsigned int    depth = JsonHelper::checkAndGetNumericValue<unsigned int>(jsonVarInfo.json(), "depth");
   
-    _registerPlan->varInfo.emplace(make_pair(variableId, VarInfo(depth, registerId)));
+    _registerPlan->varInfo.emplace(variableId, VarInfo(depth, registerId));
   }
 
   auto jsonNrRegsList = json.get("nrRegs");
@@ -545,6 +548,7 @@ bool ExecutionNode::isInInnerLoop () const {
 
     if (type == ENUMERATE_COLLECTION ||
         type == INDEX ||
+        type == TRAVERSAL ||
         type == ENUMERATE_LIST) {
       // we are contained in an outer loop
       return true;
@@ -1034,6 +1038,24 @@ void ExecutionNode::RegisterPlan::after (ExecutionNode* en) {
       // these node types do not produce any new registers
       break;
     }
+    
+    case ExecutionNode::TRAVERSAL: {
+      depth++;
+      auto ep = static_cast<TraversalNode const*>(en);
+      TRI_ASSERT(ep != nullptr);
+      auto vars = ep->getVariablesSetHere();
+      nrRegsHere.emplace_back(static_cast<RegisterId>(vars.size()));
+      // create a copy of the last value here
+      // this is requried because back returns a reference and emplace/push_back may invalidate all references
+      RegisterId registerId = static_cast<RegisterId>(vars.size() + nrRegs.back());
+      nrRegs.emplace_back(registerId);
+
+      for (auto& it : vars) {
+        varInfo.emplace(it->id, VarInfo(depth, totalNrRegs));
+        totalNrRegs++;
+      }
+      break;
+    }
 
     case ExecutionNode::ILLEGAL: {
       THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_NOT_IMPLEMENTED, "node type not implemented");
@@ -1437,6 +1459,30 @@ ExecutionNode* SubqueryNode::clone (ExecutionPlan* plan,
   return static_cast<ExecutionNode*>(c);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief whether or not the subquery is a data-modification operation
+////////////////////////////////////////////////////////////////////////////////
+
+bool SubqueryNode::isModificationQuery () const {
+  std::vector<ExecutionNode*> stack({ _subquery });
+
+  while (! stack.empty()) {
+    auto current = stack.back();
+    stack.pop_back();
+    
+    if (current->isModificationNode()) {
+      return true;
+    }
+
+    current->addDependencies(stack); 
+  }
+
+  return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief replace the out variable, so we can adjust the name.
+////////////////////////////////////////////////////////////////////////////////
 
 void SubqueryNode::replaceOutVariable(Variable const* var) {
   _outVariable = var;
@@ -1469,8 +1515,7 @@ struct SubqueryVarUsageFinder final : public WalkerWorker<ExecutionNode> {
 
   bool before (ExecutionNode* en) override final {
     // Add variables used here to _usedLater:
-    auto&& usedHere = en->getVariablesUsedHere();
-    for (auto const& v : usedHere) {
+    for (auto const& v : en->getVariablesUsedHere()) {
       _usedLater.emplace(v);
     }
     return false;
@@ -1478,8 +1523,7 @@ struct SubqueryVarUsageFinder final : public WalkerWorker<ExecutionNode> {
 
   void after (ExecutionNode* en) override final {
     // Add variables set here to _valid:
-    auto&& setHere = en->getVariablesSetHere();
-    for (auto const& v : setHere) {
+    for (auto& v : en->getVariablesSetHere()) {
       _valid.emplace(v);
     }
   }
@@ -1494,7 +1538,7 @@ struct SubqueryVarUsageFinder final : public WalkerWorker<ExecutionNode> {
     // create the set difference. note: cannot use std::set_difference as our sets are NOT sorted
     for (auto it = subfinder._usedLater.begin(); it != subfinder._usedLater.end(); ++it) {
       if (_valid.find(*it) != _valid.end()) {
-        _usedLater.emplace((*it));
+        _usedLater.emplace(*it);
       }
     }
     return false;
@@ -1512,7 +1556,7 @@ std::vector<Variable const*> SubqueryNode::getVariablesUsedHere () const {
   std::vector<Variable const*> v;
   for (auto it = finder._usedLater.begin(); it != finder._usedLater.end(); ++it) {
     if (finder._valid.find(*it) == finder._valid.end()) {
-      v.emplace_back((*it));
+      v.emplace_back(*it);
     }
   }
 
@@ -1529,7 +1573,7 @@ void SubqueryNode::getVariablesUsedHere (std::unordered_set<Variable const*>& va
       
   for (auto it = finder._usedLater.begin(); it != finder._usedLater.end(); ++it) {
     if (finder._valid.find(*it) == finder._valid.end()) {
-      vars.emplace((*it));
+      vars.emplace(*it);
     }
   }
 }
@@ -1722,4 +1766,3 @@ double NoResultsNode::estimateCost (size_t& nrItems) const {
 // mode: outline-minor
 // outline-regexp: "^\\(/// @brief\\|/// {@inheritDoc}\\|/// @addtogroup\\|// --SECTION--\\|/// @\\}\\)"
 // End:
-

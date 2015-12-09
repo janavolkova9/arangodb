@@ -244,6 +244,21 @@ namespace triagens {
         }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// @brief returns true if the default shard key is used
+////////////////////////////////////////////////////////////////////////////////
+
+        bool usesDefaultShardKeys () const {
+          TRI_json_t* const node = triagens::basics::JsonHelper::getObjectElement(_json, "shardKeys");
+          if (TRI_LengthArrayJson(node) != 1) {
+            return false;
+          }
+          TRI_json_t* firstKey = TRI_LookupArrayJson(node, 0);
+          TRI_ASSERT(TRI_IsStringJson(firstKey));
+          std::string shardKey = triagens::basics::JsonHelper::getStringValue(firstKey, "");
+          return shardKey == TRI_VOC_ATTRIBUTE_KEY;
+        }
+
+////////////////////////////////////////////////////////////////////////////////
 /// @brief returns the shard ids
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -398,7 +413,7 @@ namespace triagens {
             s = (TRI_vocbase_col_status_e) triagens::basics::JsonHelper::getNumericValue
                           <int>
                           (_json, "status", (int) TRI_VOC_COL_STATUS_CORRUPTED);
-            m.insert(make_pair(it->first,s));
+            m.insert(make_pair(it->first, s));
           }
           return m;
         }
@@ -613,7 +628,7 @@ namespace triagens {
             TRI_json_t* _json = it->second;
             s = triagens::basics::JsonHelper::getNumericValue
                           <int> (_json, "errorNum", 0);
-            m.insert(make_pair(it->first,s));
+            m.insert(make_pair(it->first, s));
           }
           return m;
         }
@@ -793,7 +808,7 @@ namespace triagens {
 /// Usually one does not have to call this directly.
 ////////////////////////////////////////////////////////////////////////////////
 
-        void loadPlannedCollections (bool = true);
+        void loadPlannedCollections ();
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief (re-)load the information about planned databases
@@ -845,7 +860,7 @@ namespace triagens {
 /// about all shards of a collection.
 ////////////////////////////////////////////////////////////////////////////////
 
-        void loadCurrentCollections (bool = true);
+        void loadCurrentCollections (bool);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief ask about a collection in current. This returns information about

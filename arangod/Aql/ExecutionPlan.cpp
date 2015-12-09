@@ -39,6 +39,7 @@
 #include "Aql/Optimizer.h"
 #include "Aql/Query.h"
 #include "Aql/SortNode.h"
+#include "Aql/TraversalNode.h"
 #include "Aql/Variable.h"
 #include "Aql/WalkerWorker.h"
 #include "Basics/JsonHelper.h"
@@ -160,7 +161,7 @@ class CloneNodeAdder final : public WalkerWorker<ExecutionNode> {
 
     bool success;
 
-    CloneNodeAdder (ExecutionPlan* plan) 
+    explicit CloneNodeAdder (ExecutionPlan* plan) 
       : _plan(plan), 
         success(true) {
     }
@@ -229,7 +230,7 @@ triagens::basics::Json ExecutionPlan::toJson (Ast* ast,
   triagens::basics::Json result = _root->toJson(zone, verbose); 
 
   // set up rules 
-  auto const&& appliedRules = Optimizer::translateRules(_appliedRules);
+  auto appliedRules(std::move(Optimizer::translateRules(_appliedRules)));
   triagens::basics::Json rules(triagens::basics::Json::Array, appliedRules.size());
 
   for (auto const& r : appliedRules) {
@@ -470,12 +471,18 @@ ModificationOptions ExecutionPlan::createModificationOptions (AstNode const* nod
     // no functions in the query can access document data...
     bool isReadWrite = false;
 
-    auto const collections = _ast->query()->collections();
+    if (_ast->containsTraversal()) {
+      // its unclear which collections the traversal will access
+      isReadWrite = true;
+    }
+    else {
+      auto const collections = _ast->query()->collections();
 
-    for (auto const& it : *(collections->collections())) {
-      if (it.second->isReadWrite) {
-        isReadWrite = true;
-        break;
+      for (auto const& it : *(collections->collections())) {
+        if (it.second->isReadWrite) {
+          isReadWrite = true;
+          break;
+        }
       }
     }
 
@@ -532,7 +539,7 @@ ExecutionNode* ExecutionPlan::registerNode (ExecutionNode* node) {
   TRI_ASSERT(node->id() > 0);
 
   try {
-    _ids.emplace(std::make_pair(node->id(), node));
+    _ids.emplace(node->id(), node);
   }
   catch (...) {
     delete node;
@@ -620,6 +627,56 @@ ExecutionNode* ExecutionPlan::fromNodeFor (ExecutionNode* previous,
 
   TRI_ASSERT(en != nullptr);
   
+  return addDependency(previous, en);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief create an execution plan element from an AST FOR TRAVERSAL node
+////////////////////////////////////////////////////////////////////////////////
+
+ExecutionNode* ExecutionPlan::fromNodeTraversal (ExecutionNode* previous,
+                                                 AstNode const* node) {
+  TRI_ASSERT(node != nullptr && node->type == NODE_TYPE_TRAVERSAL);
+  TRI_ASSERT(node->numMembers() >= 4);
+  TRI_ASSERT(node->numMembers() <= 6);
+
+  // the first 3 members are used by traversal internally.
+  // The members 4-6, where 5 and 6 are optional, are used
+  // as out variables.
+  AstNode const* direction = node->getMember(0);
+  AstNode const* start = node->getMember(1);
+  AstNode const* graph = node->getMember(2);
+
+  // First create the node
+  auto travNode = new TraversalNode(this, nextId(), _ast->query()->vocbase(),
+          direction, start, graph);
+
+  auto variable = node->getMember(3);
+  TRI_ASSERT(variable->type == NODE_TYPE_VARIABLE);
+  auto v = static_cast<Variable*>(variable->getData());
+  TRI_ASSERT(v != nullptr);
+  travNode->setVertexOutput(v);
+
+  if (node->numMembers() > 4) {
+    // return the edge as well
+    variable = node->getMember(4);
+    TRI_ASSERT(variable->type == NODE_TYPE_VARIABLE);
+    v = static_cast<Variable*>(variable->getData());
+    TRI_ASSERT(v != nullptr);
+    travNode->setEdgeOutput(v);
+    if (node->numMembers() > 5) {
+      // return the path as well
+      variable = node->getMember(5);
+      TRI_ASSERT(variable->type == NODE_TYPE_VARIABLE);
+      v = static_cast<Variable*>(variable->getData());
+      TRI_ASSERT(v != nullptr);
+      travNode->setPathOutput(v);
+    }
+  }
+
+  ExecutionNode* en = registerNode(travNode);
+  TRI_ASSERT(en != nullptr);
   return addDependency(previous, en);
 }
 
@@ -1406,6 +1463,11 @@ ExecutionNode* ExecutionPlan::fromNode (AstNode const* node) {
         break;
       }
 
+      case NODE_TYPE_TRAVERSAL: {
+        en = fromNodeTraversal(en, member);
+        break;
+      }
+
       case NODE_TYPE_FILTER: {
         en = fromNodeFilter(en, member);
         break;
@@ -1622,9 +1684,7 @@ struct VarUsageFinder final : public WalkerWorker<ExecutionNode> {
 
     void after (ExecutionNode* en) override final {
       // Add variables set here to _valid:
-      auto&& setHere = en->getVariablesSetHere();
-      
-      for (auto& v : setHere) {
+      for (auto& v : en->getVariablesSetHere()) {
         _valid.emplace(v);
         _varSetBy->emplace(v->id, en);
       }
@@ -1689,7 +1749,9 @@ void ExecutionPlan::unlinkNode (ExecutionNode* node,
                                      "Cannot unlink root node of plan");
     }
     // adjust root node. the caller needs to make sure that a new root node gets inserted
-    _root = nullptr;
+    if (node == _root) {
+      _root = nullptr;
+    }
   }
 
   auto dep = node->getDependencies();  // Intentionally copy the vector!
@@ -1801,7 +1863,7 @@ ExecutionNode* ExecutionPlan::fromJson (triagens::basics::Json const& json) {
       auto subqueryNode = fromJson(subquery);
     
       // register the just created subquery 
-      static_cast<SubqueryNode*>(ret)->setSubquery(subqueryNode); 
+      static_cast<SubqueryNode*>(ret)->setSubquery(subqueryNode, false); 
     }
   }
 
@@ -1849,6 +1911,7 @@ bool ExecutionPlan::isDeadSimple () const {
     if (nodeType == ExecutionNode::SUBQUERY ||
         nodeType == ExecutionNode::ENUMERATE_COLLECTION ||
         nodeType == ExecutionNode::ENUMERATE_LIST ||
+        nodeType == ExecutionNode::TRAVERSAL ||
         nodeType == ExecutionNode::INDEX) { 
       // these node types are not simple
       return false;

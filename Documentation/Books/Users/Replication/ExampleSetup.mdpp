@@ -24,19 +24,25 @@ require("org/arangodb/replication").applier.stop();
 
 The *stop* operation will terminate any replication activity in the _system database on the slave.
 
-After that, do an initial sync of the slave with data from the master. Execute the following
-commands on the slave:
+
+!SECTION Initial synchronization
+
+After that, we perform an initial sync of the slave with data from the master. To do this,
+execute the following commands on the slave:
 
 ```js
 db._useDatabase("_system");
 require("org/arangodb/replication").sync({
   endpoint: "tcp://master.domain.org:8529",
   username: "myuser",
-  password: "mypasswd"
+  password: "mypasswd",
+  verbose: false
 });
 ```
 
 Username and password only need to be specified when the master server requires authentication.
+To check what the synchronization is currently doing, supply set the *verbose* option to *true*.
+If set, the synchronization will create log messages with the current synchronization status.
 
 **Warning**: The sync command will replace data in the slave database with data from the master 
 database! Only execute these commands if you have verified you are on the correct server, in the
@@ -53,6 +59,8 @@ assume we got the following last log tick:
 }
 ```
 
+!SECTION Continuous synchronization
+
 Now, we could start the replication applier in the slave database using the last log tick.
 However, there is one thing to consider: replication on the slave will be running until the 
 slave gets shut down. When the slave server gets restarted, replication will be turned off again. 
@@ -68,9 +76,12 @@ require("org/arangodb/replication").applier.properties({
   username: "myuser",
   password: "mypasswd",
   autoStart: true,
+  autoResync: true,
   adaptivePolling: true,
   includeSystem: false,
   requireFromPresent: false,
+  idleMinWaitTime: 0.5,
+  idleMaxWaitTime: 1.5,
   verbose: false
 });
 ```
@@ -90,6 +101,18 @@ and when the replication is re-started after a longer pause. When *requireFromPr
 or resumes replication is still present on the master. If not, then there would be data loss. If 
 *requireFromPresent* is *true*, the replication applier will abort with an appropriate error message. 
 If set to *false*, then the replication applier will still start, and ignore the data loss.
+
+The *autoResync* option can be used in conjunction with the *requireFromPresent* option as follows:
+when both *requireFromPresent* and *autoResync* are set to *true* and the master cannot provide the 
+log data the slave had requested, the replication applier will stop as usual. But due to the fact
+that *autoResync* is set to true, the slave will automatically trigger a full resync of all data with 
+the master. After that, the replication applier will go into continuous replication mode again.
+Additionally, setting *autoResync* to *true* will trigger a full re-synchronization of data when
+the continuous replication is started and detects that there is no start tick value.
+
+Note that automatic re-synchronization (*autoResync* option set to *true*) may transfer a lot of 
+data from the master to the slave and can therefore be expensive. Still it's turned on here so
+there's less need for manual intervention. 
 
 Now it's time to start the replication applier on the slave using the last log tick we got
 before:
@@ -122,4 +145,30 @@ a write lock on the collections involved in the transaction.
 
 You may also want to check the master and slave states via the HTTP APIs 
 (see [HTTP Interface for Replication](../HttpReplications/README.md)).
+
+
+!SECTION Initial synchronization from the ArangoShell
+
+The *sync* may take a long time to complete. If it's called from the ArangoShell, the connection
+may time out, which will effectively discard the result of the *sync* operation. Therefore in the
+ArangoShell, the optional *async* attribute can be used to start the synchronization as a background 
+process on the slave. If the *async* attribute is set to *true*, the call to *sync* will return 
+almost instantly with an id string. Using this id string, the status of the sync job on the slave 
+can be queried using the *getSyncResult* function as follows:
+
+```js
+db._useDatabase("_system");
+var replication = require("org/arangodb/replication");
+var id = replication.sync({
+  endpoint: "tcp://master.domain.org:8529",
+  username: "myuser",
+  password: "mypasswd",
+  async: true
+});
+
+print(replication.getSyncResult(id));
+```
+
+*getSyncResult* will return *false* as long as the synchronization is not complete, and return the
+synchronization result otherwise.
 

@@ -50,6 +50,8 @@ using VPackObjectIterator = arangodb::velocypack::ObjectIterator;
 #ifndef VELOCYPACK_ALIAS_BUILDER
 #define VELOCYPACK_ALIAS_BUILDER
 using VPackBuilder = arangodb::velocypack::Builder;
+using VPackObjectBuilder = arangodb::velocypack::ObjectBuilder;
+using VPackArrayBuilder = arangodb::velocypack::ArrayBuilder;
 #endif
 #endif
 
@@ -81,6 +83,13 @@ using VPackCollection = arangodb::velocypack::Collection;
 #ifndef VELOCYPACK_ALIAS_ATTRIBUTETRANSLATOR
 #define VELOCYPACK_ALIAS_ATTRIBUTETRANSLATOR
 using VPackAttributeTranslator = arangodb::velocypack::AttributeTranslator;
+#endif
+#endif
+
+#ifdef VELOCYPACK_HELPERS_H
+#ifndef VELOCYPACK_ALIAS_HELPERS
+#define VELOCYPACK_ALIAS_HELPERS
+using VPackTopLevelAttributeExcludeHandler = arangodb::velocypack::TopLevelAttributeExcludeHandler;
 #endif
 #endif
 

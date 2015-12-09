@@ -39,6 +39,28 @@ book-check-mdpp-leftovers:
 		exit 1; \
 	fi
 
+ppbook-precheck-bad-code-sections:
+	@if grep -qR  '^``` *.* ' $(NAME); then \
+		echo "tripple tics with blanks afterwards found: "; \
+		grep -R  '^``` *.* ' $(NAME); \
+		exit 1; \
+	fi
+
+ppbook-check-html-link:
+	@if test "`egrep -r '\[.*\]\(.*\)' ppbooks/$(NAME) |grep '\.md:' |grep html |grep -v http://|grep -v https:// |grep -v header.css |wc -l`" -gt 0; then \
+		echo "Found links to .html files inside of the document! use <foo>.md instead!"; \
+		echo; \
+		egrep -r '\[.*\]\(.*\)' ppbooks/$(NAME)  | grep '\.md:' | grep html |grep -v http://|grep -v https:// |grep -v header.css ; \
+		exit 1; \
+	fi
+
+ppbook-check-directory-link:
+	@if test "`egrep -r '\[.*\]\(.*\)' ppbooks/$(NAME) | grep '\.md:' |grep -v html |grep -v http://|grep -v https:// |grep -v header.css |grep -v node_modules |grep -v node_modules | grep -v '\.md' | wc -l`" -gt 0; then \
+		echo "Found director links! use ../<directory>/README.md instead!"; \
+		echo; \
+		egrep -r '\[.*\]\(.*\)' ppbooks/$(NAME) |grep '\.md:' |grep -v html |grep -v http://|grep -v https:// |grep -v header.css |grep -v node_modules |grep -v node_modules | grep -v '\.md' ; \
+		exit 1; \
+	fi
 
 book-check-markdown-leftovers:
 	@if test "`find books/$(NAME) -name '*.html' -exec grep -- '##' {} \; -print | wc -l`" -gt 0; then \
@@ -58,15 +80,11 @@ book-check-markdown-leftovers:
 	fi
 
 book-check-dangling-anchors:
-	grep -R "a href" books/$(NAME) | \
-		grep -v styles/header.js | \
-		grep -v /app.js | \
-		grep -v navigation| \
-		grep -v 'http://' | \
-		grep -v 'https://' | \
-		grep '#'  |sed 's;\(.*\.html\):.*a href="\(.*\)#\(.*\)">.*</a>.*;\1,\2,\3;' > /tmp/anchorlist.txt
+	@grep -R "a href.*#" books/$(NAME) | \
+		egrep -v "(styles/header\.js|/app\.js|class=\"navigation|https*://|href=\"#\")" | \
+		sed 's;\(.*\.html\):.*a href="\(.*\)#\(.*\)">.*</a>.*;\1,\2,\3;' | grep -v " " > /tmp/anchorlist.txt
 
-	NO=0; \
+	@NO=0; \
 	for i in `cat /tmp/anchorlist.txt`; do \
 	    ANCHOR=`echo $$i | cut '-d,' -f 3`; \
 	    FN=`echo $$i | cut '-d,' -f 2`; \
@@ -100,14 +118,17 @@ build-book-symlinks:
 	bash
 
 build-book:
-	test -d ppbooks/$(NAME) || mkdir -p ppbooks/$(NAME)
-	WD=`pwd`; \
-	for dir in `find $(NAME) -type d `; do \
-		cd $${WD}/ppbooks; \
-		test -d $${dir} || mkdir -p $${dir}; \
-	done
-	cd ppbooks/$(NAME); test -L SUMMARY.md || ln -s ../../$(NAME)/SUMMARY.md .
-	cd ppbooks/$(NAME); test -L book.json || ln -s ../../$(NAME)/book.json .
+	make ppbook-precheck-bad-code-sections $(NAME)
+	if test ! -d ppbooks/$(NAME); then \
+	  mkdir -p ppbooks/$(NAME); \
+	  WD=`pwd`; \
+	  for dir in `find $(NAME) -type d `; do \
+	  	cd $${WD}/ppbooks; \
+	  	test -d $${dir} || mkdir -p $${dir}; \
+	  done; \
+	fi
+	cd ppbooks/$(NAME); if ! test -L SUMMARY.md; then ln -s ../../$(NAME)/SUMMARY.md . ; fi
+	cd ppbooks/$(NAME); if ! test -f book.json ; then cp ../../$(NAME)/book.json . ; fi
 	cd ppbooks/$(NAME); cp -a ../../$(NAME)/styles/* styles/
 	WD=`pwd`; \
 	for pic in `find $(NAME) -name \*.png`; do \
@@ -116,7 +137,7 @@ build-book:
 		echo cp $${WD}/$${pic} $${pic}; \
 		cp $${WD}/$${pic} $${pic}; \
 	done
-	python generateMdFiles.py $(NAME) ppbooks/ ../../js/apps/system/_admin/aardvark/APP/api-docs.json
+	python ../Scripts/generateMdFiles.py $(NAME) ppbooks/ ../../js/apps/system/_admin/aardvark/APP/api-docs.json $(FILTER)
 
 	cd ppbooks/$(NAME) && sed -i -e 's/VERSION_NUMBER/v$(newVersionNumber)/g' styles/header.js
 	cd ppbooks/$(NAME) && sed -i -e 's/VERSION_NUMBER/v$(newVersionNumber)/g' README.md
@@ -128,19 +149,21 @@ build-book:
 	make book-check-leftover-docublocks
 	make book-check-restheader-leftovers
 	make book-check-mdpp-leftovers
+	make ppbook-check-html-link
+	make ppbook-check-directory-link
 
 	cd ppbooks/$(NAME) && gitbook install
 	cd ppbooks/$(NAME) && gitbook build ./ ./../../books/$(NAME)
-	python deprecated.py
+	python ../Scripts/deprecated.py
 
 	make book-check-markdown-leftovers
-	make book-check-dangling-anchors
 
 clean-book:
-	@rm -rvf books/$(NAME) ppbooks/$(NAME)
+	@rm -rvf books/$(NAME)
+	@if test -z "$(FILTER)"; then rm -rvf ppbooks/$(NAME); fi
 
 clean-book-intermediate:
-	@rm -rvf ppbooks/$(NAME)
+	@if test -z "$(FILTER)"; then rm -rvf ppbooks/$(NAME); fi
 
 
 ################################################################################
@@ -160,8 +183,6 @@ check-docublocks:
 		grep -v ppbook |\
 		grep -v allComments.txt |\
 		grep -v Makefile |\
-		grep -v codeBlockReader.py |\
-		grep -v generateMdFiles.py |\
 		grep -v '.*~:.*' |\
 		grep -v '.*#.*:.*' \
 		   > /tmp/rawindoc.txt
@@ -169,8 +190,6 @@ check-docublocks:
 		grep -v ppbook |\
 		grep -v allComments.txt |\
 		grep -v Makefile |\
-		grep -v codeBlockReader.py |\
-		grep -v generateMdFiles.py |\
 		grep -v '.*~:.*' |\
 		grep -v '.*#.*:.*' \
 		   >> /tmp/rawindoc.txt
@@ -181,8 +200,6 @@ check-docublocks:
 		grep -v ppbook |\
 		grep -v allComments.txt |\
 		grep -v Makefile |\
-		grep -v codeBlockReader.py |\
-		grep -v generateMdFiles.py |\
 		grep -v '.*~:.*' |\
 		grep -v '.*#.*:.*' \
 		   >> /tmp/rawinprog.txt
@@ -214,7 +231,7 @@ check-docublocks:
 	fi
 
 clean-intermediate:
-	make clean-book-intermediate NAME=Users
+	make clean-book-intermediate NAME=Users FILTER=$(FILTER)
 
 
 clean: clean-intermediate
@@ -225,7 +242,7 @@ clean: clean-intermediate
 
 build-books-keep-md:
 	@test -d books || mkdir books
-	python codeBlockReader.py
+	python ../Scripts/codeBlockReader.py
 	make build-book NAME=Users
 
 build-books: clean-intermediate build-books-keep-md check-docublocks

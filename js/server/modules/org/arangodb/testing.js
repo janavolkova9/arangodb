@@ -74,8 +74,8 @@ var optionsDocumentation = [
   '     of a small local cluster',
   '   - `clusterNodes`: number of DB-Servers to use',
   '   - valgrindHosts  - configure which clustercomponents to run using valgrintd',
-  '        Coordinator - run Coordinator with valgrind',
-  '        DBServer    - run DBServers with valgrind',
+  '        Coordinator - flag to run Coordinator with valgrind',
+  '        DBServer    - flag to run DBServers with valgrind',
   '   - `test`: path to single test to execute for "single" test target',
   '   - `cleanup`: if set to true (the default), the cluster data files',
   '     and logs are removed after termination of the test.',
@@ -251,6 +251,12 @@ function filterTestcaseByOptions (testname, options, whichFilter) {
     return false;
   }
 
+  if ((testname.indexOf("-novalgrind") !== -1)  && 
+      (typeof(options.valgrind) === 'string')) {
+    whichFilter.filter = "skip in valgrind";
+    return false;
+  }
+
   return true;
 }
 
@@ -327,7 +333,7 @@ function startInstance (protocol, options, addArgs, testname, tmpDir) {
     }
 
     if (options.valgrindHosts.DBServer === true) {
-      valgrindHosts += 'DBServer';
+      valgrindHosts += 'DBserver';
     }
     
   }
@@ -1046,7 +1052,7 @@ function performTests(options, testList, testname, remote) {
         print("Skipping, " + te + " server is gone.");
         results[te] = {status: false, message: instanceInfo.exitStatus};
         instanceInfo.exitStatus = "server is gone.";
-        continue;
+        break;
       }
 
       print("\n" + Date() + " arangod: Trying",te,"...");
@@ -1284,7 +1290,7 @@ testFuncs.shell_client = function(options) {
         print("Skipping, " + te + " server is gone.");
         results[te] = {status: false, message: instanceInfo.exitStatus};
         instanceInfo.exitStatus = "server is gone.";
-        continue;
+        break;
       }
 
       print("\narangosh: Trying",te,"...");
@@ -1438,9 +1444,9 @@ function rubyTests (options, ssl) {
           print("Skipping " + te + " server is gone.");
           result[te] = {status: false, message: instanceInfo.exitStatus};
           instanceInfo.exitStatus = "server is gone.";
-          continue;
+          break;
         }
-        print("\nTrying ",te,"...");
+        print("\n"+ Date() + " rspec Trying ",te,"...");
 
         result[te] = executeAndWait(command, args);
         if (result[te].status === false) {
@@ -1967,7 +1973,7 @@ testFuncs.arangob = function (options) {
         print("Skipping " + benchTodo[i] + ", server is gone.");
         results[i] = {status: false, message: instanceInfo.exitStatus};
         instanceInfo.exitStatus = "server is gone.";
-        continue;
+        break;
       }
       var args = benchTodo[i];
       if (options.hasOwnProperty('benchargs')) {
@@ -2091,7 +2097,7 @@ testFuncs.authentication_parameters = function (options) {
         };
         instanceInfo.exitStatus = "server is gone.";
         all_ok = false;
-        continue;
+        break;
       }
 
       r = download(instanceInfo.url + urlsTodo[i],"", downloadOptions);

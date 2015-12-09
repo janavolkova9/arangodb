@@ -143,7 +143,7 @@ int Optimizer::createPlans (ExecutionPlan* plan,
   int maxRuleLevel = _rules.rbegin()->first;
 
   // which optimizer rules are disabled?
-  std::unordered_set<int> const&& disabledIds = getDisabledRuleIds(rulesSpecification);
+  std::unordered_set<int> disabledIds(getDisabledRuleIds(rulesSpecification));
 
   // _plans contains the previous optimisation result
   _plans.clear();
@@ -497,6 +497,12 @@ void Optimizer::setupRules () {
   registerRule("move-filters-up-2",
                moveFiltersUpRule,
                moveFiltersUpRule_pass4,
+               true);
+
+  // merge filters into traversals
+  registerRule("merge-traversal-filter",
+               mergeFilterIntoTraversal,
+               mergeFilterIntoTraversal_pass6,
                true);
   
   //////////////////////////////////////////////////////////////////////////////

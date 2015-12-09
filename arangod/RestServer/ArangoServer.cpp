@@ -67,6 +67,7 @@
 #include "RestHandler/RestDebugHelperHandler.h"
 #include "RestHandler/RestDocumentHandler.h"
 #include "RestHandler/RestEdgeHandler.h"
+#include "RestHandler/RestEdgesHandler.h"
 #include "RestHandler/RestExportHandler.h"
 #include "RestHandler/RestHandlerCreator.h"
 #include "RestHandler/RestImportHandler.h"
@@ -153,6 +154,10 @@ void ArangoServer::defineHandlers (HttpHandlerFactory* factory) {
   // add "/edge" handler
   factory->addPrefixHandler(RestVocbaseBaseHandler::EDGE_PATH,
                             RestHandlerCreator<RestEdgeHandler>::createNoData);
+
+  // add "/edges" handler
+  factory->addPrefixHandler(RestVocbaseBaseHandler::EDGES_PATH,
+                            RestHandlerCreator<RestEdgesHandler>::createNoData);
   
   // add "/export" handler
   factory->addPrefixHandler(RestVocbaseBaseHandler::EXPORT_PATH,
@@ -833,6 +838,9 @@ int ArangoServer::startupServer () {
     checkVersion = true;
     // --check-version disables all replication appliers
     _disableReplicationApplier = true;
+    if (_applicationCluster != nullptr) {
+      _applicationCluster->disable();
+    }
   }
 
   // run upgrade script
@@ -842,6 +850,9 @@ int ArangoServer::startupServer () {
     performUpgrade = true;
     // --upgrade disables all replication appliers
     _disableReplicationApplier = true;
+    if (_applicationCluster != nullptr) {
+      _applicationCluster->disable();
+    }
   }
 
   // skip an upgrade even if VERSION is missing

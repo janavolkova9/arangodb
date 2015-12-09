@@ -693,20 +693,27 @@ function INDEX (collection, indexTypes) {
 /// @brief get access to a collection
 ////////////////////////////////////////////////////////////////////////////////
 
-function COLLECTION (name) {
+function COLLECTION (name, func) {
   'use strict';
 
   if (typeof name !== 'string') {
-    THROW(null, INTERNAL.errors.ERROR_INTERNAL);
+    THROW(func, INTERNAL.errors.ERROR_QUERY_FUNCTION_ARGUMENT_TYPE_MISMATCH, func);
   }
 
+  var c;
   if (name.substring(0, 1) === '_') {
     // system collections need to be accessed slightly differently as they
     // are not returned by the propertyGetter of db
-    return INTERNAL.db._collection(name);
+    c = INTERNAL.db._collection(name);
+  }
+  else {
+    c = INTERNAL.db[name];
   }
 
-  return INTERNAL.db[name];
+  if (c === null || c === undefined) {
+    THROW(func, INTERNAL.errors.ERROR_ARANGO_COLLECTION_NOT_FOUND, String(name));
+  }
+  return c;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1311,7 +1318,7 @@ function AQL_DOCUMENT (collection, id) {
   }
 
   if (TYPEWEIGHT(id) === TYPEWEIGHT_ARRAY) {
-    var c = COLLECTION(collection);
+    var c = COLLECTION(collection, "DOCUMENT");
 
     var result = [ ], i;
     for (i = 0; i < id.length; ++i) {
@@ -1325,7 +1332,7 @@ function AQL_DOCUMENT (collection, id) {
   }
 
   try {
-    return COLLECTION(collection).document(id);
+    return COLLECTION(collection, "DOCUMENT").document(id);
   }
   catch (e2) {
     return null;
@@ -1336,16 +1343,16 @@ function AQL_DOCUMENT (collection, id) {
 /// @brief get all documents from the specified collection
 ////////////////////////////////////////////////////////////////////////////////
 
-function GET_DOCUMENTS (collection) {
+function GET_DOCUMENTS (collection, func) {
   'use strict';
 
   WARN(null, INTERNAL.errors.ERROR_QUERY_COLLECTION_USED_IN_EXPRESSION, AQL_TO_STRING(collection));
 
   if (isCoordinator) {
-    return COLLECTION(collection).all().toArray();
+    return COLLECTION(collection, func).all().toArray();
   }
 
-  return COLLECTION(collection).ALL(0, null).documents;
+  return COLLECTION(collection, func).ALL(0, null).documents;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2703,6 +2710,29 @@ function AQL_IS_OBJECT (value) {
   return (TYPEWEIGHT(value) === TYPEWEIGHT_OBJECT);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief test if value is of a valid datestring
+///
+/// returns a bool
+////////////////////////////////////////////////////////////////////////////////
+
+function AQL_IS_DATESTRING (value) {
+  'use strict';
+    
+  if (TYPEWEIGHT(value) !== TYPEWEIGHT_STRING) {
+    return false;
+  }
+
+  // argument is a string
+
+  // detect invalid dates ("foo" -> "fooZ" -> getTime() == NaN)
+  var date = new Date(value);
+  if (isNaN(date)) {
+    return false;
+  }
+  return true;
+}
+
 // -----------------------------------------------------------------------------
 // --SECTION--                                                 numeric functions
 // -----------------------------------------------------------------------------
@@ -2765,6 +2795,16 @@ function AQL_SQRT (value) {
   'use strict';
 
   return NUMERIC_VALUE(Math.sqrt(AQL_TO_NUMBER(value)));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief exponentation
+////////////////////////////////////////////////////////////////////////////////
+
+function AQL_POW (base, exp) {
+  'use strict';
+
+  return NUMERIC_VALUE(Math.pow(AQL_TO_NUMBER(base), AQL_TO_NUMBER(exp)));
 }
 
 // -----------------------------------------------------------------------------
@@ -3895,27 +3935,30 @@ function AQL_NEAR (collection, latitude, longitude, limit, distanceAttribute) {
     limit = 100;
   }
   else {
+    if (TYPEWEIGHT(limit) !== TYPEWEIGHT_NUMBER) {
+      THROW("NEAR", INTERNAL.errors.ERROR_QUERY_FUNCTION_ARGUMENT_TYPE_MISMATCH);
+    }
     limit = AQL_TO_NUMBER(limit);
   }
 
   var weight = TYPEWEIGHT(distanceAttribute);
   if (weight !== TYPEWEIGHT_NULL && weight !== TYPEWEIGHT_STRING) {
-    WARN("NEAR", INTERNAL.errors.ERROR_QUERY_FUNCTION_ARGUMENT_TYPE_MISMATCH);
+    THROW("NEAR", INTERNAL.errors.ERROR_QUERY_FUNCTION_ARGUMENT_TYPE_MISMATCH);
   }
 
   if (isCoordinator) {
-    var query = COLLECTION(collection).near(latitude, longitude);
+    var query = COLLECTION(collection, "NEAR").near(latitude, longitude);
     query._distance = distanceAttribute;
     return query.limit(limit).toArray();
   }
 
-  var idx = INDEX(COLLECTION(collection), [ "geo1", "geo2" ]);
+  var idx = INDEX(COLLECTION(collection, "NEAR"), [ "geo1", "geo2" ]);
 
   if (idx === null) {
     THROW("NEAR", INTERNAL.errors.ERROR_QUERY_GEO_INDEX_MISSING, collection);
   }
 
-  var result = COLLECTION(collection).NEAR(idx.id, latitude, longitude, limit);
+  var result = COLLECTION(collection, "NEAR").NEAR(idx.id, latitude, longitude, limit);
 
   if (distanceAttribute === null || distanceAttribute === undefined) {
     return result.documents;
@@ -3943,22 +3986,28 @@ function AQL_WITHIN (collection, latitude, longitude, radius, distanceAttribute)
 
   var weight = TYPEWEIGHT(distanceAttribute);
   if (weight !== TYPEWEIGHT_NULL && weight !== TYPEWEIGHT_STRING) {
-    WARN("WITHIN", INTERNAL.errors.ERROR_QUERY_FUNCTION_ARGUMENT_TYPE_MISMATCH);
+    THROW("WITHIN", INTERNAL.errors.ERROR_QUERY_FUNCTION_ARGUMENT_TYPE_MISMATCH);
   }
+
+  weight = TYPEWEIGHT(radius);
+  if (weight !== TYPEWEIGHT_NULL && weight !== TYPEWEIGHT_NUMBER) {
+    THROW("WITHIN", INTERNAL.errors.ERROR_QUERY_FUNCTION_ARGUMENT_TYPE_MISMATCH);
+  }
+  radius = AQL_TO_NUMBER(radius);
   
   if (isCoordinator) {
-    var query = COLLECTION(collection).within(latitude, longitude, radius);
+    var query = COLLECTION(collection, "WITHIN").within(latitude, longitude, radius);
     query._distance = distanceAttribute;
     return query.toArray();
   }
   
-  var idx = INDEX(COLLECTION(collection), [ "geo1", "geo2" ]);
+  var idx = INDEX(COLLECTION(collection, "WITHIN"), [ "geo1", "geo2" ]);
 
   if (idx === null) {
     THROW("WITHIN", INTERNAL.errors.ERROR_QUERY_GEO_INDEX_MISSING, collection);
   }
 
-  var result = COLLECTION(collection).WITHIN(idx.id, latitude, longitude, radius);
+  var result = COLLECTION(collection, "WITHIN").WITHIN(idx.id, latitude, longitude, radius);
 
   if (distanceAttribute === null || distanceAttribute === undefined) {
     return result.documents;
@@ -3990,7 +4039,12 @@ function AQL_WITHIN_RECTANGLE (collection, latitude1, longitude1, latitude2, lon
     return null;
   }
   
-  return COLLECTION(collection).withinRectangle(latitude1, longitude1, latitude2, longitude2).toArray();
+  return COLLECTION(collection, "WITHIN_RECTANGLE").withinRectangle(
+    latitude1, 
+    longitude1, 
+    latitude2, 
+    longitude2
+  ).toArray();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4072,7 +4126,7 @@ function AQL_IS_IN_POLYGON (points, latitude, longitude) {
 function AQL_FULLTEXT (collection, attribute, query, limit) {
   'use strict';
 
-  var idx = INDEX_FULLTEXT(COLLECTION(collection), attribute);
+  var idx = INDEX_FULLTEXT(COLLECTION(collection, "FULLTEXT"), attribute);
 
   if (idx === null) {
     THROW("FULLTEXT", INTERNAL.errors.ERROR_QUERY_FULLTEXT_INDEX_MISSING, collection);
@@ -4080,12 +4134,12 @@ function AQL_FULLTEXT (collection, attribute, query, limit) {
 
   if (isCoordinator) {
     if (limit !== undefined && limit !== null && limit > 0) {
-      return COLLECTION(collection).fulltext(attribute, query, idx).limit(limit).toArray();
+      return COLLECTION(collection, "FULLTEXT").fulltext(attribute, query, idx).limit(limit).toArray();
     }
-    return COLLECTION(collection).fulltext(attribute, query, idx).toArray();
+    return COLLECTION(collection, "FULLTEXT").fulltext(attribute, query, idx).toArray();
   }
 
-  return COLLECTION(collection).FULLTEXT(idx, query, limit).documents;
+  return COLLECTION(collection, "FULLTEXT").FULLTEXT(idx, query, limit).documents;
 }
 
 // -----------------------------------------------------------------------------
@@ -4565,7 +4619,7 @@ function AQL_PASSTHRU (value) {
 /// this is no actual function the end user should call
 ////////////////////////////////////////////////////////////////////////////////
 
-function AQL_TEST_MODIFY (test, what) {
+function AQL_TEST_INTERNAL (test, what) {
   'use strict';
   if (test === 'MODIFY_ARRAY') {
     what[0] = 1; 
@@ -4585,6 +4639,12 @@ function AQL_TEST_MODIFY (test, what) {
     what.e.f = { a: 1, b: 2 };
     delete what.f; 
     what.g = "foo";
+  }
+  else if (test === 'DEADLOCK') {
+    var err = new ArangoError();
+    err.errorNum = INTERNAL.errors.ERROR_DEADLOCK.code;
+    err.errorMessage = INTERNAL.errors.ERROR_DEADLOCK.message;
+    throw err;
   }
   return what; 
 }
@@ -5447,7 +5507,7 @@ function AQL_PATHS (vertices, edgeCollection, direction, options) {
   }
 
   var searchAttributes = {
-    edgeCollection : COLLECTION(edgeCollection),
+    edgeCollection : COLLECTION(edgeCollection, "PATHS"),
     minLength : minLength,
     maxLength : maxLength,
     direction : searchDirection,
@@ -5573,7 +5633,7 @@ function AQL_GRAPH_PATHS (graphName, options) {
       return null;
     }
     if (edgeCollections.indexOf(def.collection) === -1) {
-      edgeCollections.push(COLLECTION(def.collection));
+      edgeCollections.push(COLLECTION(def.collection, "GRAPH_PATHS"));
     }
 
   });
@@ -5594,7 +5654,7 @@ function AQL_GRAPH_PATHS (graphName, options) {
       followCycles : followCycles
     };
 
-    var vertices = GET_DOCUMENTS(startCollection);
+    var vertices = GET_DOCUMENTS(startCollection, "GRAPH_PATHS");
     var n = vertices.length, i, j;
     for (i = 0; i < n; ++i) {
       var vertex = vertices[i];
@@ -5979,11 +6039,11 @@ function FILTER_RESTRICTION (list, restrictionList) {
 /// @brief get all document _ids matching the given examples
 ////////////////////////////////////////////////////////////////////////////////
 
-function DOCUMENT_IDS_BY_EXAMPLE (collectionList, example) {
+function DOCUMENT_IDS_BY_EXAMPLE (func, collectionList, example) {
   var res = [ ];
   if (example === "null" || example === null || ! example) {
     collectionList.forEach(function (c) {
-      res = res.concat(COLLECTION(c).toArray().map(function(t) { return t._id; }));
+      res = res.concat(COLLECTION(c, func).toArray().map(function(t) { return t._id; }));
     });
     return res;
   }
@@ -6006,7 +6066,7 @@ function DOCUMENT_IDS_BY_EXAMPLE (collectionList, example) {
   });
   collectionList.forEach(function (c) {
     tmp.forEach(function (e) {
-      res = res.concat(COLLECTION(c).byExample(e).toArray().map(function(t) {
+      res = res.concat(COLLECTION(c, func).byExample(e).toArray().map(function(t) {
         return t._id;
       }));
     });
@@ -6018,11 +6078,11 @@ function DOCUMENT_IDS_BY_EXAMPLE (collectionList, example) {
 /// @brief getAllDocsByExample
 ////////////////////////////////////////////////////////////////////////////////
 
-function DOCUMENTS_BY_EXAMPLE (collectionList, example) {
+function DOCUMENTS_BY_EXAMPLE (func, collectionList, example) {
   var res = [ ];
   if (example === "null" || example === null || ! example) {
     collectionList.forEach(function (c) {
-      res = res.concat(COLLECTION(c).toArray());
+      res = res.concat(COLLECTION(c, func).toArray());
     });
     return res;
   }
@@ -6043,7 +6103,7 @@ function DOCUMENTS_BY_EXAMPLE (collectionList, example) {
   });
   collectionList.forEach(function (c) {
     tmp.forEach(function (e) {
-      res = res.concat(COLLECTION(c).byExample(e).toArray());
+      res = res.concat(COLLECTION(c, func).byExample(e).toArray());
     });
   });
   return res;
@@ -6113,7 +6173,7 @@ function RESOLVE_GRAPH_TO_FROM_VERTICES (graphname, options, funcname) {
   if (options.includeOrphans) {
     collections.fromCollections = collections.fromCollections.concat(collections.orphanCollections);
   }
-  return DOCUMENTS_BY_EXAMPLE(
+  return DOCUMENTS_BY_EXAMPLE(funcname,
     collections.fromCollections.filter(removeDuplicates), options.fromVertexExample
   );
 }
@@ -6129,7 +6189,7 @@ function RESOLVE_GRAPH_TO_TO_VERTICES (graphname, options, funcname) {
     return self.indexOf(elem) === pos;
   };
 
-  return DOCUMENTS_BY_EXAMPLE(
+  return DOCUMENTS_BY_EXAMPLE(funcname,
     collections.toCollection.filter(removeDuplicates), options.toVertexExample
   );
 }
@@ -6149,7 +6209,7 @@ function RESOLVE_GRAPH_START_VERTICES (graphName, options, funcname) {
   var removeDuplicates = function(elem, pos, self) {
     return self.indexOf(elem) === pos;
   };
-  return DOCUMENTS_BY_EXAMPLE(
+  return DOCUMENTS_BY_EXAMPLE(funcname,
     collections.fromCollections.filter(removeDuplicates), options.fromVertexExample
   );
 }
@@ -6172,13 +6232,13 @@ function RESOLVE_GRAPH_TO_DOCUMENTS (graphname, options, funcname) {
   };
 
   var result =  {
-    fromVertices : DOCUMENTS_BY_EXAMPLE(
+    fromVertices : DOCUMENTS_BY_EXAMPLE(funcname,
       collections.fromCollections.filter(removeDuplicates), options.fromVertexExample
     ),
-    toVertices : DOCUMENTS_BY_EXAMPLE(
+    toVertices : DOCUMENTS_BY_EXAMPLE(funcname,
       collections.toCollection.filter(removeDuplicates), options.toVertexExample
     ),
-    edges : DOCUMENTS_BY_EXAMPLE(
+    edges : DOCUMENTS_BY_EXAMPLE(funcname,
       collections.edgeCollections.filter(removeDuplicates), options.edgeExamples
     ),
     edgeCollections : collections.edgeCollections,
@@ -6328,7 +6388,7 @@ function AQL_SHORTEST_PATH (vertexCollection,
   ) {
     params = SHORTEST_PATH_PARAMS(params);
     var a = TRAVERSAL_FUNC("SHORTEST_PATH",
-                           TRAVERSAL.collectionDatasourceFactory(COLLECTION(edgeCollection)),
+                           TRAVERSAL.collectionDatasourceFactory(COLLECTION(edgeCollection, "SHORTEST_PATH")),
                            TO_ID(startVertex, vertexCollection),
                            TO_ID(endVertex, vertexCollection),
                            direction,
@@ -6861,14 +6921,17 @@ function AQL_GRAPH_SHORTEST_PATH (graphName,
   let startVertices;
   if (options.hasOwnProperty("startVertexCollectionRestriction")
     && Array.isArray(options.startVertexCollectionRestriction)) {
-    startVertices = DOCUMENT_IDS_BY_EXAMPLE(options.startVertexCollectionRestriction, startVertexExample);
+    startVertices = DOCUMENT_IDS_BY_EXAMPLE(
+      "GRAPH_SHORTEST_PATH", options.startVertexCollectionRestriction, startVertexExample);
   } 
   else if (options.hasOwnProperty("startVertexCollectionRestriction") 
     && typeof options.startVertexCollectionRestriction === 'string') {
-    startVertices = DOCUMENT_IDS_BY_EXAMPLE([ options.startVertexCollectionRestriction ], startVertexExample);
+    startVertices = DOCUMENT_IDS_BY_EXAMPLE("GRAPH_SHORTEST_PATH", 
+      [ options.startVertexCollectionRestriction ], startVertexExample);
   }
   else {
-    startVertices = DOCUMENT_IDS_BY_EXAMPLE(vertexCollections, startVertexExample);
+    startVertices = DOCUMENT_IDS_BY_EXAMPLE(
+      "GRAPH_SHORTEST_PATH", vertexCollections, startVertexExample);
   }
   if (startVertices.length === 0) {
     return [];
@@ -6877,14 +6940,17 @@ function AQL_GRAPH_SHORTEST_PATH (graphName,
   let endVertices;
   if (options.hasOwnProperty("endVertexCollectionRestriction")
     && Array.isArray(options.endVertexCollectionRestriction)) {
-    endVertices = DOCUMENT_IDS_BY_EXAMPLE(options.endVertexCollectionRestriction, endVertexExample);
+    endVertices = DOCUMENT_IDS_BY_EXAMPLE(
+      "GRAPH_SHORTEST_PATH", options.endVertexCollectionRestriction, endVertexExample);
   } 
   else if (options.hasOwnProperty("endVertexCollectionRestriction")
     && typeof options.endVertexCollectionRestriction === 'string') {
-    endVertices = DOCUMENT_IDS_BY_EXAMPLE([ options.endVertexCollectionRestriction ], endVertexExample);
+    endVertices = DOCUMENT_IDS_BY_EXAMPLE(
+      "GRAPH_SHORTEST_PATH", [ options.endVertexCollectionRestriction ], endVertexExample);
   } 
   else {
-    endVertices = DOCUMENT_IDS_BY_EXAMPLE(vertexCollections, endVertexExample);
+    endVertices = DOCUMENT_IDS_BY_EXAMPLE(
+      "GRAPH_SHORTEST_PATH", vertexCollections, endVertexExample);
   }
   if (endVertices.length === 0) {
     return [];
@@ -6932,7 +6998,7 @@ function AQL_TRAVERSAL (vertexCollection,
   params = TRAVERSAL_PARAMS(params);
 
   return TRAVERSAL_FUNC("TRAVERSAL",
-                        TRAVERSAL.collectionDatasourceFactory(COLLECTION(edgeCollection)),
+                        TRAVERSAL.collectionDatasourceFactory(COLLECTION(edgeCollection, "TRAVERSAL")),
                         TO_ID(startVertex, vertexCollection),
                         undefined,
                         direction,
@@ -7109,7 +7175,7 @@ function AQL_TRAVERSAL_TREE (vertexCollection,
   }
 
   var result = TRAVERSAL_FUNC("TRAVERSAL_TREE",
-                              TRAVERSAL.collectionDatasourceFactory(COLLECTION(edgeCollection)),
+                              TRAVERSAL.collectionDatasourceFactory(COLLECTION(edgeCollection, "TRAVERSAL_TREE")),
                               TO_ID(startVertex, vertexCollection),
                               undefined,
                               direction,
@@ -7288,7 +7354,7 @@ function AQL_EDGES (edgeCollection,
                     options) {
   'use strict';
 
-  var c = COLLECTION(edgeCollection), result;
+  var c = COLLECTION(edgeCollection, "EDGES"), result;
 
   // validate arguments
   if (direction === "outbound") {
@@ -7427,11 +7493,11 @@ function AQL_NEIGHBORS (vertexCollection,
   vertex = TO_ID(vertex, vertexCollection);
   var collectionFromVertex = vertex.slice(0, vertexCollection.length);
   if (collectionFromVertex !== vertexCollection) {
-    THROW("AQL_NEIGBORS",
+    THROW("NEIGHBORS",
           INTERNAL.errors.ERROR_GRAPH_INVALID_PARAMETER,
           "",
-          "You specified vertex collection `" + collectionFromVertex +
-          "...` for start vertext from the collection `" + vertexCollection + "`");
+          "specified vertex collection '" + collectionFromVertex +
+          "' does not match start vertex collection '" + vertexCollection + "'");
 
   } 
   options = CLONE(options) || {};
@@ -7665,7 +7731,7 @@ function AQL_GRAPH_NEIGHBORS (graphName,
     }
   }
   let vertexCollections = graph._vertexCollections().map(function (c) { return c.name();});
-  let startVertices = DOCUMENT_IDS_BY_EXAMPLE(vertexCollections, vertexExample);
+  let startVertices = DOCUMENT_IDS_BY_EXAMPLE("GRAPH_NEIGHBORS", vertexCollections, vertexExample);
   if (startVertices.length === 0) {
     return [];
   }
@@ -8005,13 +8071,13 @@ function AQL_GRAPH_COMMON_NEIGHBORS (graphName,
 
   let graph = graphModule._graph(graphName);
   let vertexCollections = graph._vertexCollections().map(function (c) { return c.name();});
-  let vertices1 = DOCUMENT_IDS_BY_EXAMPLE(vertexCollections, vertex1Examples);
+  let vertices1 = DOCUMENT_IDS_BY_EXAMPLE("GRAPH_COMMON_NEIGHBORS", vertexCollections, vertex1Examples);
   let vertices2;
   if (vertex1Examples === vertex2Examples) {
     vertices2 = vertices1;
   } 
   else {
-    vertices2 = DOCUMENT_IDS_BY_EXAMPLE(vertexCollections, vertex2Examples);
+    vertices2 = DOCUMENT_IDS_BY_EXAMPLE("GRAPH_COMMON_NEIGHBORS", vertexCollections, vertex2Examples);
   }
   // Use ES6 Map. Higher performance then Object.
   let tmpNeighborsLeft = new Map();
@@ -8735,7 +8801,7 @@ function AQL_GRAPH_CLOSENESS (graphName, options) {
 ////////////////////////////////////////////////////////////////////////////////
 /// @startDocuBlock JSF_aql_general_graph_absolute_betweenness
 ///
-/// `GRAPH_ABSOLUTE_BETWEENNESS (graphName, vertexExample, options)`
+/// `GRAPH_ABSOLUTE_BETWEENNESS (graphName, options)`
 ///
 /// The GRAPH\_ABSOLUTE\_BETWEENNESS function returns the
 /// [betweenness](http://en.wikipedia.org/wiki/Betweenness_centrality)
@@ -8807,7 +8873,7 @@ function AQL_GRAPH_ABSOLUTE_BETWEENNESS (graphName, options) {
   options.includeData = false;
   let graph = graphModule._graph(graphName);
   let vertexCollections = graph._vertexCollections().map(function (c) { return c.name();});
-  let vertexIds = DOCUMENT_IDS_BY_EXAMPLE(vertexCollections, {});
+  let vertexIds = DOCUMENT_IDS_BY_EXAMPLE("GRAPH_ABSOLUTE_BETWEENNESS", vertexCollections, {});
   let result = {};
   let distanceMap = AQL_GRAPH_SHORTEST_PATH(graphName, vertexIds , vertexIds, options);
   for (let k = 0; k < vertexIds.length; k++) {
@@ -9148,12 +9214,14 @@ exports.AQL_IS_ARRAY = AQL_IS_ARRAY;
 exports.AQL_IS_LIST = AQL_IS_ARRAY; // alias
 exports.AQL_IS_OBJECT = AQL_IS_OBJECT;
 exports.AQL_IS_DOCUMENT = AQL_IS_OBJECT; // alias
+exports.AQL_IS_DATESTRING = AQL_IS_DATESTRING;
 exports.AQL_FLOOR = AQL_FLOOR;
 exports.AQL_CEIL = AQL_CEIL;
 exports.AQL_ROUND = AQL_ROUND;
 exports.AQL_ABS = AQL_ABS;
 exports.AQL_RAND = AQL_RAND;
 exports.AQL_SQRT = AQL_SQRT;
+exports.AQL_POW = AQL_POW;
 exports.AQL_LENGTH = AQL_LENGTH;
 exports.AQL_FIRST = AQL_FIRST;
 exports.AQL_LAST = AQL_LAST;
@@ -9234,7 +9302,7 @@ exports.AQL_MERGE_RECURSIVE = AQL_MERGE_RECURSIVE;
 exports.AQL_TRANSLATE = AQL_TRANSLATE;
 exports.AQL_MATCHES = AQL_MATCHES;
 exports.AQL_PASSTHRU = AQL_PASSTHRU;
-exports.AQL_TEST_MODIFY = AQL_TEST_MODIFY;
+exports.AQL_TEST_INTERNAL = AQL_TEST_INTERNAL;
 exports.AQL_SLEEP = AQL_SLEEP;
 exports.AQL_CURRENT_DATABASE = AQL_CURRENT_DATABASE;
 exports.AQL_CURRENT_USER = AQL_CURRENT_USER;

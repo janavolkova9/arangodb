@@ -61,7 +61,7 @@ Scope::~Scope () {
 ////////////////////////////////////////////////////////////////////////////////
 
 std::string Scope::typeName () const {
-  return std::move(typeName(_type));
+  return typeName(_type);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,7 +88,9 @@ std::string Scope::typeName (ScopeType type) {
 ////////////////////////////////////////////////////////////////////////////////
 
 void Scope::addVariable (Variable* variable) {
-  _variables.emplace(std::make_pair(variable->name, variable));
+  // intentionally like this... must always overwrite the value
+  // if the key already exists
+  _variables[variable->name] = variable;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -266,6 +268,27 @@ void Scopes::addVariable (Variable* variable) {
 
   // if this fails, there won't be a memleak
   _activeScopes.back()->addVariable(variable);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief replaces an existing variable in the current scope
+////////////////////////////////////////////////////////////////////////////////
+
+void Scopes::replaceVariable (Variable* variable) {
+  TRI_ASSERT(! _activeScopes.empty());
+  TRI_ASSERT(variable != nullptr);
+
+  for (auto it = _activeScopes.rbegin(); it != _activeScopes.rend(); ++it) {
+    auto scope = (*it);
+
+    if (scope->existsVariable(variable->name)) {
+      // replace existing variable
+      scope->addVariable(variable);
+      return;
+    }
+  }
+
+  THROW_ARANGO_EXCEPTION(TRI_ERROR_INTERNAL);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

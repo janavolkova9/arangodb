@@ -109,6 +109,35 @@ namespace triagens {
       void keepConnectionOnDestruction (bool b) {
         _keepConnectionOnDestruction = b;
       }
+                                 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief make an http request, creating a new HttpResult object
+/// the caller has to delete the result object
+/// this version does not allow specifying custom headers
+/// if the request fails because of connection problems, the request will be
+/// retried until it either succeeds (at least no connection problem) or there
+/// have been _maxRetries retries
+////////////////////////////////////////////////////////////////////////////////
+
+      SimpleHttpResult* retryRequest (rest::HttpRequest::HttpRequestType,
+                                      std::string const&,
+                                      char const*,
+                                      size_t,
+                                      std::map<std::string, std::string> const&);
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief make an http request, creating a new HttpResult object
+/// the caller has to delete the result object
+/// this version does not allow specifying custom headers
+/// if the request fails because of connection problems, the request will be
+/// retried until it either succeeds (at least no connection problem) or there
+/// have been _maxRetries retries
+////////////////////////////////////////////////////////////////////////////////
+
+      SimpleHttpResult* retryRequest (rest::HttpRequest::HttpRequestType,
+                                      std::string const&,
+                                      char const*,
+                                      size_t);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief make an http request, creating a new HttpResult object
@@ -141,16 +170,16 @@ namespace triagens {
 /// @param password                       password
 ////////////////////////////////////////////////////////////////////////////////
 
-      void setUserNamePassword (const std::string& prefix,
-                                const std::string& username,
-                                const std::string& password);
+      void setUserNamePassword (std::string const& prefix,
+                                std::string const& username,
+                                std::string const& password);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief allows rewriting locations
 ////////////////////////////////////////////////////////////////////////////////
 
       void setLocationRewriter (void* data,
-                                std::string (*func)(void*, const std::string&)) {
+                                std::string (*func)(void*, std::string const&)) {
         _locationRewriter.data = data;
         _locationRewriter.func = func;
       }
@@ -183,7 +212,7 @@ namespace triagens {
 /// @brief returns the current error message
 ////////////////////////////////////////////////////////////////////////////////
 
-      const std::string& getErrorMessage () const {
+      std::string const& getErrorMessage () const {
         return _errorMessage;
       }
 
@@ -191,7 +220,7 @@ namespace triagens {
 /// @brief register and dump an error message
 ////////////////////////////////////////////////////////////////////////////////
 
-      void setErrorMessage (const std::string& message,
+      void setErrorMessage (std::string const& message,
                             bool forceWarn = false) {
         _errorMessage = message;
 
@@ -406,6 +435,16 @@ namespace triagens {
       std::vector<std::pair<std::string, std::string> >_pathToBasicAuth;
 
       size_t const _maxPacketSize;
+      
+    public:
+
+      size_t _maxRetries;
+
+      uint64_t _retryWaitTime;
+      
+      std::string _retryMessage;
+
+    private:
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief flag whether or not we keep the connection on destruction

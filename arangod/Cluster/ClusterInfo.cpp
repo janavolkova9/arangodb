@@ -333,7 +333,7 @@ void ClusterInfo::flush () {
   loadPlannedDatabases();
   loadCurrentDatabases();
   loadPlannedCollections();
-  loadCurrentCollections();
+  loadCurrentCollections(true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -648,7 +648,7 @@ void ClusterInfo::loadCurrentDatabases () {
 
 static const std::string prefixPlannedCollections = "Plan/Collections";
 
-void ClusterInfo::loadPlannedCollections (bool acquireLock) {
+void ClusterInfo::loadPlannedCollections () {
 
   uint64_t storedVersion = _plannedCollectionsProt.version;
   MUTEX_LOCKER(_plannedCollectionsProt.mutex);
@@ -660,15 +660,14 @@ void ClusterInfo::loadPlannedCollections (bool acquireLock) {
   // Now contact the agency:
   AgencyCommResult result;
   {
-    if (acquireLock) {
-      AgencyCommLocker locker("Plan", "READ");
+    AgencyCommLocker locker("Plan", "READ");
 
-      if (locker.successful()) {
-        result = _agency.getValues(prefixPlannedCollections, true);
-      }
+    if (locker.successful()) {
+      result = _agency.getValues(prefixPlannedCollections, true);
     }
     else {
-      result = _agency.getValues(prefixPlannedCollections, true);
+      LOG_ERROR("Error while locking %s", prefixPlannedCollections.c_str());
+      return;
     }
   }
 
@@ -746,7 +745,7 @@ void ClusterInfo::loadPlannedCollections (bool acquireLock) {
     return;
   }
 
-  LOG_DEBUG("Error while loading %s httpCode: %d "
+  LOG_ERROR("Error while loading %s httpCode: %d "
             "errorCode: %d errorMessage: %s body: %s",
             prefixPlannedCollections.c_str(),
             result.httpCode(), result.errorCode(),
@@ -764,7 +763,7 @@ shared_ptr<CollectionInfo> ClusterInfo::getCollection
   int tries = 0;
 
   if (! _plannedCollectionsProt.isValid) {
-    loadPlannedCollections(true);
+    loadPlannedCollections();
     ++tries;
   }
 
@@ -788,7 +787,7 @@ shared_ptr<CollectionInfo> ClusterInfo::getCollection
     }
 
     // must load collections outside the lock
-    loadPlannedCollections(true);
+    loadPlannedCollections();
   }
 
   return shared_ptr<CollectionInfo>(new CollectionInfo());
@@ -844,7 +843,7 @@ const std::vector<shared_ptr<CollectionInfo> > ClusterInfo::getCollections
   std::vector<shared_ptr<CollectionInfo> > result;
 
   // always reload
-  loadPlannedCollections(true);
+  loadPlannedCollections();
 
   READ_LOCKER(_plannedCollectionsProt.lock);
   // look up database by id
@@ -1183,7 +1182,7 @@ int ClusterInfo::dropDatabaseCoordinator (string const& name, string& errorMsg,
 
   // Load our own caches:
   loadPlannedDatabases();
-  loadPlannedCollections(true);
+  loadPlannedCollections();
 
   // Now wait for it to appear and be complete:
   res.clear();
@@ -1238,47 +1237,40 @@ int ClusterInfo::createCollectionCoordinator (string const& databaseName,
   const double endTime = TRI_microtime() + realTimeout;
   const double interval = getPollInterval();
   {
-    AgencyCommLocker locker("Plan", "WRITE");
+    // check if a collection with the same name is already planned
+    loadPlannedCollections();
 
+    READ_LOCKER(_plannedCollectionsProt.lock);
+    AllCollections::const_iterator it = _plannedCollections.find(databaseName);
+    if (it != _plannedCollections.end()) {
+      const std::string name = JsonHelper::getStringValue(json, "name", "");
 
-    if (! locker.successful()) {
-      return setErrormsg(TRI_ERROR_CLUSTER_COULD_NOT_LOCK_PLAN, errorMsg);
-    }
+      DatabaseCollections::const_iterator it2 = (*it).second.find(name);
 
-    {
-      // check if a collection with the same name is already planned
-      loadPlannedCollections(false);
-
-      READ_LOCKER(_plannedCollectionsProt.lock);
-      AllCollections::const_iterator it = _plannedCollections.find(databaseName);
-      if (it != _plannedCollections.end()) {
-        const std::string name = JsonHelper::getStringValue(json, "name", "");
-
-        DatabaseCollections::const_iterator it2 = (*it).second.find(name);
-
-        if (it2 != (*it).second.end()) {
-          // collection already exists!
-          return TRI_ERROR_ARANGO_DUPLICATE_NAME;
-        }
+      if (it2 != (*it).second.end()) {
+        // collection already exists!
+        return TRI_ERROR_ARANGO_DUPLICATE_NAME;
       }
     }
-
-    if (! ac.exists("Plan/Databases/" + databaseName)) {
-      return setErrormsg(TRI_ERROR_ARANGO_DATABASE_NOT_FOUND, errorMsg);
-    }
-
-    if (ac.exists("Plan/Collections/" + databaseName + "/"+collectionID)) {
-      return setErrormsg(TRI_ERROR_CLUSTER_COLLECTION_ID_EXISTS, errorMsg);
-    }
-
-    AgencyCommResult result
-      = ac.setValue("Plan/Collections/" + databaseName + "/"+collectionID,
-                        json, 0.0);
-    if (!result.successful()) {
-      return setErrormsg(TRI_ERROR_CLUSTER_COULD_NOT_CREATE_COLLECTION_IN_PLAN,
-                          errorMsg);
-    }
   }
+
+  if (! ac.exists("Plan/Databases/" + databaseName)) {
+    return setErrormsg(TRI_ERROR_ARANGO_DATABASE_NOT_FOUND, errorMsg);
+  }
+
+  if (ac.exists("Plan/Collections/" + databaseName + "/" + collectionID)) {
+    return setErrormsg(TRI_ERROR_CLUSTER_COLLECTION_ID_EXISTS, errorMsg);
+  }
+
+  AgencyCommResult result
+    = ac.casValue("Plan/Collections/" + databaseName + "/" + collectionID,
+                  json, false, 0.0, 0.0);
+  if (!result.successful()) {
+    return setErrormsg(TRI_ERROR_CLUSTER_COULD_NOT_CREATE_COLLECTION_IN_PLAN,
+                        errorMsg);
+  }
+
+  ac.increaseVersionRepeated("Plan/Version");
 
   // Update our cache:
   loadPlannedCollections();
@@ -1305,12 +1297,12 @@ int ClusterInfo::createCollectionCoordinator (string const& databaseName,
           TRI_json_t const* error = TRI_LookupObjectJson(json, "error");
           if (TRI_IsBooleanJson(error) && error->_value._boolean) {
             tmpHaveError = true;
-            tmpMsg += " shardID:"+it->first+":";
+            tmpMsg += " shardID:" + it->first + ":";
             TRI_json_t const* errorMessage
                   = TRI_LookupObjectJson(json, "errorMessage");
             if (TRI_IsStringJson(errorMessage)) {
               tmpMsg += string(errorMessage->_value._string.data,
-                               errorMessage->_value._string.length-1);
+                               errorMessage->_value._string.length - 1);
             }
             TRI_json_t const* errorNum = TRI_LookupObjectJson(json, "errorNum");
             if (TRI_IsNumberJson(errorNum)) {
@@ -1334,6 +1326,8 @@ int ClusterInfo::createCollectionCoordinator (string const& databaseName,
     res = ac.watchValue("Current/Version", index, interval, false);
     index = res._index;
   }
+
+  // LOG_ERROR("GOT TIMEOUT. NUMBEROFSHARDS: %d", (int) numberOfShards);
   return setErrormsg(TRI_ERROR_CLUSTER_TIMEOUT, errorMsg);
 }
 
@@ -1377,7 +1371,7 @@ int ClusterInfo::dropCollectionCoordinator (string const& databaseName,
   }
 
   // Update our own cache:
-  loadPlannedCollections(true);
+  loadPlannedCollections();
 
   // Now wait for it to appear and be complete:
   res.clear();
@@ -1408,7 +1402,7 @@ int ClusterInfo::dropCollectionCoordinator (string const& databaseName,
           return setErrormsg(
             TRI_ERROR_CLUSTER_COULD_NOT_REMOVE_COLLECTION_IN_CURRENT, errorMsg);
         }
-        loadCurrentCollections();
+        loadCurrentCollections(true);
         return setErrormsg(TRI_ERROR_NO_ERROR, errorMsg);
       }
     }
@@ -1430,56 +1424,58 @@ int ClusterInfo::setCollectionPropertiesCoordinator (string const& databaseName,
   AgencyComm ac;
   AgencyCommResult res;
 
-  AgencyCommLocker locker("Plan", "WRITE");
+  {
+    AgencyCommLocker locker("Plan", "WRITE");
 
-  if (! locker.successful()) {
-    return TRI_ERROR_CLUSTER_COULD_NOT_LOCK_PLAN;
+    if (! locker.successful()) {
+      return TRI_ERROR_CLUSTER_COULD_NOT_LOCK_PLAN;
+    }
+
+    if (! ac.exists("Plan/Databases/" + databaseName)) {
+      return TRI_ERROR_ARANGO_DATABASE_NOT_FOUND;
+    }
+
+    res = ac.getValues("Plan/Collections/" + databaseName + "/" + collectionID, false);
+
+    if (! res.successful()) {
+      return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
+    }
+
+    res.parse("", false);
+    std::map<std::string, AgencyCommResultEntry>::const_iterator it = res._values.begin();
+
+    if (it == res._values.end()) {
+      return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
+    }
+
+    TRI_json_t* json = (*it).second._json;
+    if (json == nullptr) {
+      return TRI_ERROR_OUT_OF_MEMORY;
+    }
+
+    TRI_json_t* copy = TRI_CopyJson(TRI_UNKNOWN_MEM_ZONE, json);
+    if (copy == nullptr) {
+      return TRI_ERROR_OUT_OF_MEMORY;
+    }
+
+    TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "doCompact");
+    TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "journalSize");
+    TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "waitForSync");
+    TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "indexBuckets");
+
+    TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "doCompact", TRI_CreateBooleanJson(TRI_UNKNOWN_MEM_ZONE, info->_doCompact));
+    TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "journalSize", TRI_CreateNumberJson(TRI_UNKNOWN_MEM_ZONE, info->_maximalSize));
+    TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "waitForSync", TRI_CreateBooleanJson(TRI_UNKNOWN_MEM_ZONE, info->_waitForSync));
+    TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "indexBuckets", TRI_CreateNumberJson(TRI_UNKNOWN_MEM_ZONE, info->_indexBuckets));
+
+    res.clear();
+    res = ac.setValue("Plan/Collections/" + databaseName + "/" + collectionID, copy, 0.0);
+
+    TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, copy);
   }
-
-  if (! ac.exists("Plan/Databases/" + databaseName)) {
-    return TRI_ERROR_ARANGO_DATABASE_NOT_FOUND;
-  }
-
-  res = ac.getValues("Plan/Collections/" + databaseName + "/" + collectionID, false);
-
-  if (! res.successful()) {
-    return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
-  }
-
-  res.parse("", false);
-  std::map<std::string, AgencyCommResultEntry>::const_iterator it = res._values.begin();
-
-  if (it == res._values.end()) {
-    return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
-  }
-
-  TRI_json_t* json = (*it).second._json;
-  if (json == nullptr) {
-    return TRI_ERROR_OUT_OF_MEMORY;
-  }
-
-  TRI_json_t* copy = TRI_CopyJson(TRI_UNKNOWN_MEM_ZONE, json);
-  if (copy == nullptr) {
-    return TRI_ERROR_OUT_OF_MEMORY;
-  }
-
-  TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "doCompact");
-  TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "journalSize");
-  TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "waitForSync");
-  TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "indexBuckets");
-
-  TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "doCompact", TRI_CreateBooleanJson(TRI_UNKNOWN_MEM_ZONE, info->_doCompact));
-  TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "journalSize", TRI_CreateNumberJson(TRI_UNKNOWN_MEM_ZONE, info->_maximalSize));
-  TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "waitForSync", TRI_CreateBooleanJson(TRI_UNKNOWN_MEM_ZONE, info->_waitForSync));
-  TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "indexBuckets", TRI_CreateNumberJson(TRI_UNKNOWN_MEM_ZONE, info->_indexBuckets));
-
-  res.clear();
-  res = ac.setValue("Plan/Collections/" + databaseName + "/" + collectionID, copy, 0.0);
-
-  TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, copy);
 
   if (res.successful()) {
-    loadPlannedCollections(false);
+    loadPlannedCollections();
     return TRI_ERROR_NO_ERROR;
   }
 
@@ -1496,56 +1492,58 @@ int ClusterInfo::setCollectionStatusCoordinator (string const& databaseName,
   AgencyComm ac;
   AgencyCommResult res;
 
-  AgencyCommLocker locker("Plan", "WRITE");
+  {
+    AgencyCommLocker locker("Plan", "WRITE");
 
-  if (! locker.successful()) {
-    return TRI_ERROR_CLUSTER_COULD_NOT_LOCK_PLAN;
+    if (! locker.successful()) {
+      return TRI_ERROR_CLUSTER_COULD_NOT_LOCK_PLAN;
+    }
+
+    if (! ac.exists("Plan/Databases/" + databaseName)) {
+      return TRI_ERROR_ARANGO_DATABASE_NOT_FOUND;
+    }
+
+    res = ac.getValues("Plan/Collections/" + databaseName + "/" + collectionID, false);
+
+    if (! res.successful()) {
+      return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
+    }
+
+    res.parse("", false);
+    std::map<std::string, AgencyCommResultEntry>::const_iterator it = res._values.begin();
+
+    if (it == res._values.end()) {
+      return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
+    }
+
+    TRI_json_t* json = (*it).second._json;
+    if (json == nullptr) {
+      return TRI_ERROR_OUT_OF_MEMORY;
+    }
+
+    TRI_vocbase_col_status_e old = (TRI_vocbase_col_status_e) triagens::basics::JsonHelper::getNumericValue<int>(json, "status", (int) TRI_VOC_COL_STATUS_CORRUPTED);
+
+    if (old == status) {
+      // no status change
+      return TRI_ERROR_NO_ERROR;
+    }
+
+    TRI_json_t* copy = TRI_CopyJson(TRI_UNKNOWN_MEM_ZONE, json);
+    if (copy == nullptr) {
+      return TRI_ERROR_OUT_OF_MEMORY;
+    }
+
+    TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "status");
+    TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "status", TRI_CreateNumberJson(TRI_UNKNOWN_MEM_ZONE, status));
+
+    res.clear();
+    res = ac.setValue("Plan/Collections/" + databaseName + "/" + collectionID, copy, 0.0);
+
+    TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, copy);
   }
-
-  if (! ac.exists("Plan/Databases/" + databaseName)) {
-    return TRI_ERROR_ARANGO_DATABASE_NOT_FOUND;
-  }
-
-  res = ac.getValues("Plan/Collections/" + databaseName + "/" + collectionID, false);
-
-  if (! res.successful()) {
-    return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
-  }
-
-  res.parse("", false);
-  std::map<std::string, AgencyCommResultEntry>::const_iterator it = res._values.begin();
-
-  if (it == res._values.end()) {
-    return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
-  }
-
-  TRI_json_t* json = (*it).second._json;
-  if (json == nullptr) {
-    return TRI_ERROR_OUT_OF_MEMORY;
-  }
-
-  TRI_vocbase_col_status_e old = (TRI_vocbase_col_status_e) triagens::basics::JsonHelper::getNumericValue<int>(json, "status", (int) TRI_VOC_COL_STATUS_CORRUPTED);
-
-  if (old == status) {
-    // no status change
-    return TRI_ERROR_NO_ERROR;
-  }
-
-  TRI_json_t* copy = TRI_CopyJson(TRI_UNKNOWN_MEM_ZONE, json);
-  if (copy == nullptr) {
-    return TRI_ERROR_OUT_OF_MEMORY;
-  }
-
-  TRI_DeleteObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "status");
-  TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, copy, "status", TRI_CreateNumberJson(TRI_UNKNOWN_MEM_ZONE, status));
-
-  res.clear();
-  res = ac.setValue("Plan/Collections/" + databaseName + "/" + collectionID, copy, 0.0);
-
-  TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, copy);
 
   if (res.successful()) {
-    loadPlannedCollections(false);
+    loadPlannedCollections();
     return TRI_ERROR_NO_ERROR;
   }
 
@@ -1590,6 +1588,23 @@ int ClusterInfo::ensureIndexCoordinator (string const& databaseName,
 
   string const idString = triagens::basics::StringUtils::itoa(iid);
 
+  string const key = "Plan/Collections/" + databaseName + "/" + collectionID;
+  AgencyCommResult previous = ac.getValues(key, false);
+  previous.parse("", false);
+  auto it = previous._values.begin();
+  TRI_json_t const* previousVal;
+  if (it == previous._values.end()) {
+    LOG_INFO("Entry for collection in Plan does not exist!");
+    previousVal = nullptr;
+  }
+  else {
+    previousVal = it->second._json;
+  }
+
+  loadPlannedCollections();
+  // It is possible that between the fetching of the planned collections
+  // and the write lock we acquire below something has changed. Therefore
+  // we first get the previous value and then do a compare and swap operation.
   {
     TRI_json_t* collectionJson = nullptr;
     AgencyCommLocker locker("Plan", "WRITE");
@@ -1599,7 +1614,6 @@ int ClusterInfo::ensureIndexCoordinator (string const& databaseName,
     }
 
     {
-      loadPlannedCollections(false);
 
       shared_ptr<CollectionInfo> c = getCollection(databaseName, collectionID);
 
@@ -1698,9 +1712,13 @@ int ClusterInfo::ensureIndexCoordinator (string const& databaseName,
 
     TRI_PushBack3ArrayJson(TRI_UNKNOWN_MEM_ZONE, idx, TRI_CopyJson(TRI_UNKNOWN_MEM_ZONE, newIndex));
 
-    AgencyCommResult result = ac.setValue("Plan/Collections/" + databaseName + "/" + collectionID,
-                                          collectionJson,
-                                          0.0);
+    AgencyCommResult result;
+    if (previousVal != nullptr) {
+      result = ac.casValue(key, previousVal, collectionJson, 0.0, 0.0);
+    }
+    else {  // only when there is no previous value
+      result = ac.setValue(key, collectionJson, 0.0);
+    }
 
     TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, collectionJson);
 
@@ -1712,7 +1730,7 @@ int ClusterInfo::ensureIndexCoordinator (string const& databaseName,
   }
 
   // reload our own cache:
-  loadPlannedCollections(true);
+  loadPlannedCollections();
 
   TRI_ASSERT(numberOfShards > 0);
 
@@ -1779,7 +1797,7 @@ int ClusterInfo::ensureIndexCoordinator (string const& databaseName,
           resultJson = newIndex;
           TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, resultJson, "isNewlyCreated", TRI_CreateBooleanJson(TRI_UNKNOWN_MEM_ZONE, true));
 
-          loadCurrentCollections();
+          loadCurrentCollections(true);
 
           return setErrormsg(TRI_ERROR_NO_ERROR, errorMsg);
         }
@@ -1813,6 +1831,17 @@ int ClusterInfo::dropIndexCoordinator (string const& databaseName,
   int numberOfShards = 0;
   string const idString = triagens::basics::StringUtils::itoa(iid);
 
+  string const key = "Plan/Collections/" + databaseName + "/" + collectionID;
+  AgencyCommResult previous = ac.getValues(key, false);
+  previous.parse("", false);
+  auto it = previous._values.begin();
+  TRI_ASSERT(it != previous._values.end());
+  TRI_json_t const* previousVal = it->second._json;
+
+  loadPlannedCollections();
+  // It is possible that between the fetching of the planned collections
+  // and the write lock we acquire below something has changed. Therefore
+  // we first get the previous value and then do a compare and swap operation.
   {
     AgencyCommLocker locker("Plan", "WRITE");
 
@@ -1824,8 +1853,6 @@ int ClusterInfo::dropIndexCoordinator (string const& databaseName,
     TRI_json_t const* indexes = nullptr;
 
     {
-      loadPlannedCollections(false);
-
       shared_ptr<CollectionInfo> c = getCollection(databaseName, collectionID);
 
       READ_LOCKER(_plannedCollectionsProt.lock);
@@ -1901,9 +1928,8 @@ int ClusterInfo::dropIndexCoordinator (string const& databaseName,
       return setErrormsg(TRI_ERROR_ARANGO_INDEX_NOT_FOUND, errorMsg);
     }
 
-    AgencyCommResult result = ac.setValue("Plan/Collections/" + databaseName + "/" + collectionID,
-                                          collectionJson,
-                                          0.0);
+    AgencyCommResult result = ac.casValue(key, previousVal, collectionJson,
+                                          0.0, 0.0);
 
     TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, collectionJson);
 
@@ -1960,7 +1986,7 @@ int ClusterInfo::dropIndexCoordinator (string const& databaseName,
         }
 
         if (! found) {
-          loadCurrentCollections();
+          loadCurrentCollections(true);
           return setErrormsg(TRI_ERROR_NO_ERROR, errorMsg);
         }
       }
@@ -2391,7 +2417,7 @@ int ClusterInfo::getResponsibleShard (CollectionID const& collectionID,
     if (++tries >= 2) {
       break;
     }
-    loadPlannedCollections(true);
+    loadPlannedCollections();
   }
 
   if (! found) {
