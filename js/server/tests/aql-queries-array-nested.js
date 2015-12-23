@@ -29,7 +29,123 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 var jsunity = require("jsunity");
-var db = require("org/arangodb").db;
+var db = require("@arangodb").db;
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief test suite
+////////////////////////////////////////////////////////////////////////////////
+
+function nestedArraySimpleSuite () {
+  var cn = "UnitTestsArray";
+  var c;
+
+  var indexUsed = function (query) {
+    var plan = AQL_EXPLAIN(query).plan;
+    var nodeTypes = plan.nodes.map(function(node) {
+      return node.type;
+    });
+    return (nodeTypes.indexOf("IndexNode") !== -1);
+  };
+    
+  var runQueries = function (q, expected, useIndexForSimple, useIndexForArray) {
+    // try without index
+    var result = AQL_EXECUTE(q).json.sort();
+    assertEqual(expected, result);
+
+    // try with hash index on value
+    var idx = c.ensureIndex({ type: "hash", fields: [ "value" ] });
+    assertEqual(2, c.getIndexes().length);
+    
+    result = AQL_EXECUTE(q).json.sort();
+    assertEqual(expected, result);
+    assertEqual(useIndexForSimple, indexUsed(q));
+
+    c.dropIndex(idx);
+    assertEqual(1, c.getIndexes().length);
+    
+    // try with hash index on value[*]
+    idx = c.ensureIndex({ type: "hash", fields: [ "value[*]" ] });
+    assertEqual(2, c.getIndexes().length);
+    
+    result = AQL_EXECUTE(q).json.sort();
+    assertEqual(expected, result);
+    assertEqual(useIndexForArray, indexUsed(q));
+    
+    c.dropIndex(idx);
+    assertEqual(1, c.getIndexes().length);
+    
+    // try with skiplist ndex on value
+    idx = c.ensureIndex({ type: "skiplist", fields: [ "value" ] });
+    assertEqual(2, c.getIndexes().length);
+    
+    result = AQL_EXECUTE(q).json.sort();
+    assertEqual(expected, result);
+    assertEqual(useIndexForSimple, indexUsed(q));
+    
+    c.dropIndex(idx);
+    assertEqual(1, c.getIndexes().length);
+    
+    // try with skiplist index on value[*]
+    c.ensureIndex({ type: "skiplist", fields: [ "value[*]" ] });
+    assertEqual(2, c.getIndexes().length);
+    
+    result = AQL_EXECUTE(q).json.sort();
+    assertEqual(expected, result);
+    assertEqual(useIndexForArray, indexUsed(q));
+  };
+
+  return {
+
+    setUp : function () {
+      db._drop(cn);
+      c = db._create(cn);
+
+      c.insert({ _key: "1", value: "foo" });
+      c.insert({ _key: "2", value: [ "foo", "bar" ] });
+    },
+
+    tearDown : function () {
+      db._drop(cn);
+    },
+
+    testAll : function () {
+      var expected = [ "1", "2" ];
+      var q = "FOR doc IN " + c.name() + " RETURN doc._key";
+
+      runQueries(q, expected, false, false);
+    },
+
+    testOne : function () {
+      var expected = [ "1" ];
+      var q = "FOR doc IN " + c.name() + " FILTER doc.value IN [ 'foo' ] RETURN doc._key";
+      
+      runQueries(q, expected, true, false);
+    },
+   
+    testOneExpansion : function () {
+      var expected = [ ];
+      var q = "FOR doc IN " + c.name() + " FILTER doc.value[*] IN [ 'foo' ] RETURN doc._key";
+
+      runQueries(q, expected, false, false);
+    },
+      
+    testOneReverse : function () {
+      var expected = [ "2" ];
+      var q = "FOR doc IN " + c.name() + " FILTER 'foo' IN doc.value RETURN doc._key";
+
+      runQueries(q, expected, false, true);
+    },
+   
+    testOneReverseExpansion : function () {
+      var expected = [ "2" ];
+      var q = "FOR doc IN " + c.name() + " FILTER 'foo' IN doc.value[*] RETURN doc._key";
+
+      runQueries(q, expected, false, true);
+    }
+
+  };
+
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief test suite
@@ -295,10 +411,73 @@ function nestedArrayIndexSuite () {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief executes the test suite
+/// @brief test suite
 ////////////////////////////////////////////////////////////////////////////////
 
+function nestedArrayInArraySuite () {
+  var cn1 = "UnitTestsArray1";
+  var cn2 = "UnitTestsArray2";
+  var c1;
+  var c2;
+
+  var indexUsed = function (query, bindVars) {
+    var plan = AQL_EXPLAIN(query, bindVars || {}).plan;
+    var nodeTypes = plan.nodes.map(function(node) {
+      return node.type;
+    });
+    return (nodeTypes.indexOf("IndexNode") !== -1);
+  };
+
+  return {
+
+    setUp : function () {
+      db._drop(cn1);
+      db._drop(cn2);
+      c1 = db._create(cn1);
+      c2 = db._create(cn2);
+    },
+
+    tearDown : function () {
+      db._drop(cn1);
+      db._drop(cn2);
+    },
+
+    testIndexUsage : function () {
+      c1.insert({ value: "foobar" });
+      c1.insert({ value: "baz" });
+
+      c2.insert({ values: [ "foo", "bar", "bark" ] });
+      c2.insert({ values: [ "bart", "qux", "foobar", "foobar", "foobar" ] });
+      c2.insert({ values: [ "baz", "foobar", "foobar", "bart" ] });
+      c2.insert({ values: "troet" });
+      var query = "FOR doc1 IN @@c1 FOR doc2 IN @@c2 FILTER doc1.value IN doc2.values RETURN doc1.value";
+
+      var expected = [
+        "foobar", 
+        "foobar",
+        "baz"
+      ];
+      var result = AQL_EXECUTE(query, { "@c1" : cn1, "@c2" : cn2 });
+      assertEqual(expected.sort(), result.json.sort());
+      assertEqual(0, result.warnings.length);
+      
+      c2.ensureIndex({ type: "hash", fields: [ "values[*]" ] });
+      result = AQL_EXECUTE(query, { "@c1" : cn1, "@c2" : cn2 });
+      assertEqual(expected.sort(), result.json.sort());
+      assertEqual(0, result.warnings.length);
+      assertTrue(indexUsed(query, { "@c1": cn1, "@c2" : cn2 }));
+    }
+  };
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief executes the test suites
+////////////////////////////////////////////////////////////////////////////////
+
+jsunity.run(nestedArraySimpleSuite);
 jsunity.run(nestedArrayIndexSuite);
+jsunity.run(nestedArrayInArraySuite);
 
 return jsunity.done();
 

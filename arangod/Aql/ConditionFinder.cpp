@@ -59,6 +59,7 @@ bool ConditionFinder::before (ExecutionNode* en) {
     case EN::LIMIT:           
       // LIMIT invalidates the sort expression we already found
       _sorts.clear();
+      _filters.clear();
       break;
 
     case EN::SINGLETON:
@@ -80,9 +81,9 @@ bool ConditionFinder::before (ExecutionNode* en) {
        if (_sorts.empty()) {
          for (auto& it : static_cast<SortNode const*>(en)->getElements()) {
            _sorts.emplace_back((it.first)->id, it.second);
-            TRI_IF_FAILURE("ConditionFinder::sortNode") {
-              THROW_ARANGO_EXCEPTION(TRI_ERROR_DEBUG);
-            }
+           TRI_IF_FAILURE("ConditionFinder::sortNode") {
+             THROW_ARANGO_EXCEPTION(TRI_ERROR_DEBUG);
+           }
          }
        }
        break;
@@ -106,7 +107,7 @@ bool ConditionFinder::before (ExecutionNode* en) {
         break;
       }
 
-      std::unique_ptr<Condition> condition(new Condition(_plan->getAst()));
+      auto condition = std::make_unique<Condition>(_plan->getAst());
 
       bool foundCondition = false;
       for (auto& it : _variableDefinitions) {

@@ -1,8 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief infrastructure for query optimizer
 ///
-/// @file arangod/Aql/Optimizer.h
-///
 /// DISCLAIMER
 ///
 /// Copyright 2010-2014 triagens GmbH, Cologne, Germany
@@ -29,9 +27,8 @@
 #define ARANGOD_AQL_OPTIMIZER_H 1
 
 #include "Basics/Common.h"
-#include "Basics/MutexLocker.h"
-
 #include "Aql/ExecutionPlan.h"
+#include "Basics/MutexLocker.h"
 
 namespace triagens {
   namespace aql {
@@ -90,7 +87,7 @@ namespace triagens {
 
         // split and-combined filters into multiple smaller filters
         splitFiltersRule_pass1                        = 110,
-
+        
         // move calculations up the dependency chain (to pull them out of
         // inner loops etc.)
         moveCalculationsUpRule_pass1                  = 120,
@@ -98,7 +95,7 @@ namespace triagens {
         // move filters up the dependency chain (to make result sets as small
         // as possible as early as possible)
         moveFiltersUpRule_pass1                       = 130,
-  
+
         // remove calculations that are repeatedly used in a query
         removeRedundantCalculationsRule_pass1         = 140,
 
@@ -148,28 +145,24 @@ namespace triagens {
         // filters that are always true will be removed entirely
         // filters that are always false will be replaced with a NoResults node
         pass5                                         = 700,
-        removeUnnecessaryFiltersRule_pass5            = 710,
 
         // remove redundant sort blocks
-        removeRedundantSortsRule_pass5                = 720,
+        removeRedundantSortsRule_pass5                = 710,
 
         // remove SORT RAND() if appropriate
-        removeSortRandRule_pass5                      = 730,
+        removeSortRandRule_pass5                      = 720,
 
         // specialize the variables used in a COLLECT INTO
-        specializeCollectVariables_pass5              = 735,
-
-        // remove calculations that are never necessary
-        removeUnnecessaryCalculationsRule_pass5       = 740,
+        specializeCollectVariables_pass5              = 730,
 
         // remove INTO for COLLECT if appropriate
-        removeCollectIntoRule_pass5                   = 750,
+        removeCollectIntoRule_pass5                   = 740,
 
         // propagate constant attributes in FILTERs
-        propagateConstantAttributesRule_pass5         = 760,
+        propagateConstantAttributesRule_pass5         = 750,
         
         // remove unused out variables for data-modification queries
-        removeDataModificationOutVariablesRule_pass5  = 770,
+        removeDataModificationOutVariablesRule_pass5  = 760,
 
 //////////////////////////////////////////////////////////////////////////////
 /// "Pass 6": use indexes if possible for FILTER and/or SORT nodes
@@ -187,12 +180,20 @@ namespace triagens {
         
         // try to remove filters covered by index ranges
         removeFiltersCoveredByIndexRule_pass6         = 840,
+
+        removeUnnecessaryFiltersRule_pass6            = 850,
   
         // try to find sort blocks which are superseeded by indexes
-        useIndexForSortRule_pass6                     = 850,
+        useIndexForSortRule_pass6                     = 860,
+
+        // sort values used in IN comparisons of remaining filters 
+        sortInValuesRule_pass6                        = 865,
+
+        // remove calculations that are never necessary
+        removeUnnecessaryCalculationsRule_pass6       = 870,
 
         // merge filters into graph traversals
-        mergeFilterIntoTraversal_pass6                = 860,
+        mergeFilterIntoTraversalRule_pass6            = 880,
 
 //////////////////////////////////////////////////////////////////////////////
 /// Pass 9: push down calculations beyond FILTERs and LIMITs
@@ -253,7 +254,7 @@ namespace triagens {
 /// applied next.
 ////////////////////////////////////////////////////////////////////////////////
           
-        typedef std::function<int(Optimizer*, ExecutionPlan*, Rule const*)> RuleFunction;
+        typedef std::function<void(Optimizer*, ExecutionPlan*, Rule const*)> RuleFunction;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief type of an optimizer rule
@@ -294,7 +295,7 @@ namespace triagens {
 /// @brief constructor
 ////////////////////////////////////////////////////////////////////////////////
 
-          PlanList () {};
+          PlanList () {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief constructor with a plan
@@ -326,15 +327,6 @@ namespace triagens {
               }
             }
             return false;
-          }
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief get a plan index pointing before the referenced rule, so it can be 
-///   re-executed
-////////////////////////////////////////////////////////////////////////////////
-
-          static RuleLevel beforeRule (RuleLevel l) {
-            return (RuleLevel) (l - 1);
           }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -582,7 +582,7 @@ static HttpResponse* ResponseV8ToCpp (v8::Isolate* isolate,
            ((int) (TRI_ObjectToDouble(res->Get(ResponseCodeKey))));
   }
 
-  std::unique_ptr<HttpResponse> response(new HttpResponse(code, compatibility));
+  auto response = std::make_unique<HttpResponse>(code, compatibility);
 
   TRI_GET_GLOBAL_STRING(ContentTypeKey);
   if (res->Has(ContentTypeKey)) {
@@ -797,7 +797,7 @@ static TRI_action_result_t ExecuteActionVocbase (TRI_vocbase_t* vocbase,
   if (errorCode != TRI_ERROR_NO_ERROR) {
     result.isValid  = false;
     result.canceled = false;
-        
+
     HttpResponse* response = new HttpResponse(HttpResponse::SERVER_ERROR, request->compatibility());
     if (errorMessage.empty()) {
       errorMessage = TRI_errno_string(errorCode);

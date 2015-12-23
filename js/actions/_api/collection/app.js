@@ -28,9 +28,9 @@
 /// @author Copyright 2012, triAGENS GmbH, Cologne, Germany
 ////////////////////////////////////////////////////////////////////////////////
 
-var arangodb = require("org/arangodb");
-var actions = require("org/arangodb/actions");
-var cluster = require("org/arangodb/cluster");
+var arangodb = require("@arangodb");
+var actions = require("@arangodb/actions");
+var cluster = require("@arangodb/cluster");
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                 private functions
@@ -118,31 +118,35 @@ function parseBodyForCreateCollection (req, res) {
   else {
     r.name = body.name;
   }
-  r.parameter = { waitForSync : false };
+  r.parameters = { waitForSync : false };
   r.type = arangodb.ArangoCollection.TYPE_DOCUMENT;
 
   if (body.hasOwnProperty("doCompact")) {
-    r.parameter.doCompact = body.doCompact;
+    r.parameters.doCompact = body.doCompact;
   }
 
   if (body.hasOwnProperty("isSystem")) {
-    r.parameter.isSystem = body.isSystem;
+    r.parameters.isSystem = (body.isSystem && r.name[0] === '_');
+  }
+  
+  if (body.hasOwnProperty("id")) {
+    r.parameters.id = body.id;
   }
 
   if (body.hasOwnProperty("isVolatile")) {
-    r.parameter.isVolatile = body.isVolatile;
+    r.parameters.isVolatile = body.isVolatile;
   }
 
   if (body.hasOwnProperty("journalSize")) {
-    r.parameter.journalSize = body.journalSize;
+    r.parameters.journalSize = body.journalSize;
   }
 
   if (body.hasOwnProperty("indexBuckets")) {
-    r.parameter.indexBuckets = body.indexBuckets;
+    r.parameters.indexBuckets = body.indexBuckets;
   }
 
   if (body.hasOwnProperty("keyOptions")) {
-    r.parameter.keyOptions = body.keyOptions;
+    r.parameters.keyOptions = body.keyOptions;
   }
 
   if (body.hasOwnProperty("type")) {
@@ -150,19 +154,19 @@ function parseBodyForCreateCollection (req, res) {
   }
 
   if (body.hasOwnProperty("waitForSync")) {
-    r.parameter.waitForSync = body.waitForSync;
+    r.parameters.waitForSync = body.waitForSync;
   }
 
   if (body.hasOwnProperty("shardKeys") && cluster.isCoordinator()) {
-    r.parameter.shardKeys = body.shardKeys || { };
+    r.parameters.shardKeys = body.shardKeys || { };
   }
 
   if (body.hasOwnProperty("numberOfShards") && cluster.isCoordinator()) {
-    r.parameter.numberOfShards = body.numberOfShards || 0;
+    r.parameters.numberOfShards = body.numberOfShards || 0;
   }
 
   if (body.hasOwnProperty("distributeShardsLike") && cluster.isCoordinator()) {
-    r.parameter.distributeShardsLike = body.distributeShardsLike || "";
+    r.parameters.distributeShardsLike = body.distributeShardsLike || "";
   }
 
   return r;
@@ -348,19 +352,19 @@ function post_api_collection (req, res) {
       }
     }
     if (r.type === arangodb.ArangoCollection.TYPE_EDGE) {
-      collection = arangodb.db._createEdgeCollection(r.name, r.parameter);
+      collection = arangodb.db._createEdgeCollection(r.name, r.parameters);
     }
     else {
-      collection = arangodb.db._createDocumentCollection(r.name, r.parameter);
+      collection = arangodb.db._createDocumentCollection(r.name, r.parameters);
     }
 
     var result = {};
 
     result.id = collection._id;
     result.name = collection.name();
-    result.waitForSync = r.parameter.waitForSync || false;
-    result.isVolatile = r.parameter.isVolatile || false;
-    result.isSystem = r.parameter.isSystem || false;
+    result.waitForSync = r.parameters.waitForSync || false;
+    result.isVolatile = r.parameters.isVolatile || false;
+    result.isSystem = r.parameters.isSystem || false;
     result.status = collection.status();
     result.type = collection.type();
     result.keyOptions = collection.keyOptions;
@@ -788,6 +792,25 @@ function get_api_collections (req, res) {
 /// @RESTSTRUCT{uncollectedLogfileEntries,collection_figures,integer,required,int64}
 /// The number of markers in the write-ahead
 /// log for this collection that have not been transferred to journals or datafiles.
+///
+/// @RESTSTRUCT{documentReferences,collection_figures,integer,optional,int64}
+/// The number of references to documents in datafiles that JavaScript code 
+/// currently holds. This information can be used for debugging compaction and 
+/// unload issues.
+///
+/// @RESTSTRUCT{waitingFor,collection_figures,string,optional,string}
+/// An optional string value that contains information about which object type is at the 
+/// head of the collection's cleanup queue. This information can be used for debugging 
+/// compaction and unload issues.
+///
+/// @RESTSTRUCT{compactionStatus,collection_figures,object,optional,compactionStatus_attributes}
+/// @RESTSTRUCT{message,compactionStatus_attributes,string,optional,string}
+/// The action that was performed when the compaction was last run for the collection. 
+/// This information can be used for debugging compaction issues.
+///
+/// @RESTSTRUCT{time,compactionStatus_attributes,string,optional,string}
+/// The point in time the compaction for the collection was last executed. 
+/// This information can be used for debugging compaction issues.
 ///
 /// @RESTREPLYBODY{journalSize,integer,required,int64}
 /// The maximal size of a journal or datafile in bytes.
@@ -1243,6 +1266,18 @@ function put_api_collection_load (req, res, collection) {
 
 function put_api_collection_unload (req, res, collection) {
   try {
+    if (req.parameters.hasOwnProperty('flush')) {
+      var value = req.parameters.flush.toLowerCase();
+      if (value === 'true' || value === 'yes' || value === 'on' || value === 'y' || value === '1') {
+        if (collection.status() === 3 /* loaded */ && 
+            collection.figures().uncollectedLogfileEntries > 0) {
+          // flush WAL so uncollected logfile entries can get collected
+          require("internal").wal.flush();
+        }
+      }
+    }
+
+    // then unload
     collection.unload();
 
     var result = collectionRepresentation(collection);
@@ -1433,7 +1468,7 @@ function put_api_collection_properties (req, res, collection) {
 ///
 /// - *name*: The new name.
 ///
-/// If returns an object with the attributes
+/// It returns an object with the attributes
 ///
 /// - *id*: The identifier of the collection.
 ///
@@ -1446,6 +1481,11 @@ function put_api_collection_properties (req, res, collection) {
 ///   - 3: edges collection
 ///
 /// - *isSystem*: If *true* then the collection is a system collection.
+///
+/// If renaming the collection succeeds, then the collection is also renamed in 
+/// all graph definitions inside the `_graphs` collection in the current database.
+///
+/// **Note**: this method is not available in a cluster.
 ///
 /// @RESTRETURNCODES
 ///
@@ -1461,7 +1501,7 @@ function put_api_collection_properties (req, res, collection) {
 /// @EXAMPLE_ARANGOSH_RUN{RestCollectionIdentifierRename}
 ///     var cn = "products1";
 ///     var coll = db._create(cn);
-///     var url = "/_api/collection/"+ coll.name() + "/rename";
+///     var url = "/_api/collection/" + coll.name() + "/rename";
 ///
 ///     var response = logCurlRequest('PUT', url, { name: "newname" });
 ///
@@ -1521,7 +1561,7 @@ function put_api_collection_rename (req, res, collection) {
 /// Saving new data in the collection subsequently will create a new journal file
 /// automatically if there is no current journal.
 ///
-/// If returns an object with the attributes
+/// It returns an object with the attributes
 ///
 /// - *result*: will be *true* if rotation succeeded
 ///
@@ -1612,6 +1652,9 @@ function put_api_collection (req, res) {
   }
   else if (sub === "unload") {
     put_api_collection_unload(req, res, collection);
+    collection = null;
+    // run garbage collection once in all threads
+    require("internal").executeGlobalContextFunction("collectGarbage");
   }
   else if (sub === "truncate") {
     put_api_collection_truncate(req, res, collection);

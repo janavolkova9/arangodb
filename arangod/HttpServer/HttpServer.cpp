@@ -293,6 +293,12 @@ void HttpServer::handleCommunicationFailure(HttpCommTask *task) {
 bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
                                     uint64_t *jobId) {
 
+  // execute the handler using the dispatcher
+  auto job = std::make_unique<HttpServerJob>(this, handler.get(), nullptr); // TODO XXXXX (fc) is this correct
+
+  // handler now belongs to the job
+  auto h = handler.release();
+
   // create a new job
   std::unique_ptr<Job> job(new HttpServerJob(this, handler));
 
@@ -335,7 +341,10 @@ bool HttpServer::handleRequest(HttpCommTask *task,
   }
 
   // use a dispatcher queue, handler belongs to the job
-  std::unique_ptr<Job> job(new HttpServerJob(this, handler));
+  auto job = std::make_unique<HttpServerJob>(this, handler.get(), task);
+
+  // handler now belongs to the job
+  auto h = handler.release();
 
   // add the job to the dispatcher
   int res = _dispatcher->addJob(job);

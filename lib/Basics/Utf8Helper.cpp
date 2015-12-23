@@ -667,7 +667,7 @@ bool Utf8Helper::getWords (TRI_vector_string_t*& words,
 RegexMatcher* Utf8Helper::buildMatcher (std::string const& pattern) {
   UErrorCode status = U_ZERO_ERROR;
 
-  std::unique_ptr<RegexMatcher> matcher(new RegexMatcher(UnicodeString::fromUTF8(pattern), 0, status));
+  auto matcher = std::make_unique<RegexMatcher>(UnicodeString::fromUTF8(pattern), 0, status);
   if (U_FAILURE(status)) {
     return nullptr;
   }
@@ -695,7 +695,7 @@ bool Utf8Helper::matches (RegexMatcher* matcher,
                           bool& error) {
 
   TRI_ASSERT(value != nullptr);
-  UnicodeString v = UnicodeString::fromUTF8(value);
+  UnicodeString v = UnicodeString::fromUTF8(StringPiece(value, static_cast<int32_t>(valueLength)));
 
   matcher->reset(v);
 

@@ -51,8 +51,6 @@ lib_libarango_a_SOURCES = \
 	lib/Basics/ProgramOptionsDescription.cpp \
 	lib/Basics/random.cpp \
 	lib/Basics/RandomGenerator.cpp \
-	lib/Basics/ReadLocker.cpp \
-	lib/Basics/ReadUnlocker.cpp \
 	lib/Basics/ReadWriteLock.cpp \
 	lib/Basics/socket-utils.cpp \
 	lib/Basics/SpinLock.cpp \

@@ -35,7 +35,7 @@ var stub,
   FunctionStub,
   mockConstructor,
   joi = require("joi"),
-  transformRoute = require("org/arangodb/foxx/routing").__test_transformControllerToRoute,
+  transformRoute = require("@arangodb/foxx/routing").__test_transformControllerToRoute,
   _ = require("underscore");
 
 // Sorry for Yak Shaving. But I can't take it anymore.
@@ -118,7 +118,7 @@ mockConstructor = function () {
 
 
 var jsunity = require("jsunity"),
-  FoxxController = require("org/arangodb/foxx").Controller,
+  FoxxController = require("@arangodb/foxx").Controller,
   fakeContext,
   fakeContextWithRootElement;
 
@@ -532,7 +532,7 @@ function DocumentationAndConstraintsSpec () {
       app = new FoxxController(fakeContext);
       routes = app.routingInfo.routes;
       models = app.models;
-      Model = require('org/arangodb/foxx').Model;
+      Model = require('@arangodb/foxx').Model;
     },
 
     testDefinePathParam: function () {
@@ -1417,24 +1417,6 @@ function SetupAuthorization () {
       }
 
       assertEqual(err.message, "Please provide the cookieLifetime");
-    },
-
-    testRefusesMissingCookieName: function () {
-      var err;
-
-      app = new FoxxController(fakeContext);
-
-      try {
-        app.activateAuthentication({
-          type: "cookie",
-          cookieLifetime: 360000,
-          sessionLifetime: 600
-        });
-      } catch (e) {
-        err = e;
-      }
-
-      assertEqual(err.message, "Please provide the cookieName");
     },
 
     testRefusesMissingSessionLifetime: function () {

@@ -146,9 +146,9 @@ int IndexBlock::initialize () {
   auto ast = en->_plan->getAst();
 
   // instantiate expressions:
-  auto instantiateExpression = [&] (size_t i, size_t j, size_t k, AstNode const* a) -> void {
+  auto instantiateExpression = [&] (size_t i, size_t j, size_t k, AstNode* a) -> void {
     // all new AstNodes are registered with the Ast in the Query
-    std::unique_ptr<Expression> e(new Expression(ast, a));
+    auto e = std::make_unique<Expression>(ast, a);
 
     TRI_IF_FAILURE("IndexBlock::initialize") {
       THROW_ARANGO_EXCEPTION(TRI_ERROR_DEBUG);
@@ -159,7 +159,7 @@ int IndexBlock::initialize () {
     std::unordered_set<Variable const*> inVars;
     e->variables(inVars);
     
-    std::unique_ptr<NonConstExpression> nce(new NonConstExpression(i, j, k, e.get()));
+    auto nce = std::make_unique<NonConstExpression>(i, j, k, e.get());
     e.release();
     _nonConstExpressions.push_back(nce.get());
     nce.release();
@@ -211,10 +211,6 @@ int IndexBlock::initialize () {
       else {
         // Index is responsible for the right side, check if left side has to be evaluated
         if (! lhs->isConstant()) {
-          if (leaf->type == NODE_TYPE_OPERATOR_BINARY_IN) {
-            // IN: now make IN result unique
-            lhs = makeUnique(lhs);
-          }
           instantiateExpression(i, j, 0, lhs);
           TRI_IF_FAILURE("IndexBlock::initializeExpressions") {
             THROW_ARANGO_EXCEPTION(TRI_ERROR_DEBUG);
@@ -323,6 +319,7 @@ bool IndexBlock::initIndexes () {
     }
     if (_currentIndex < _indexes.size()) {
       // This check will work as long as _indexes.size() < MAX_SIZE_T
+      TRI_ASSERT(_iterator == nullptr);
       _iterator = createIterator();
     }
     else {
@@ -368,6 +365,7 @@ void IndexBlock::startNextIterator () {
   }
   if (_currentIndex < _indexes.size()) {
     // This check will work as long as _indexes.size() < MAX_SIZE_T
+    TRI_ASSERT(_iterator == nullptr);
     _iterator = createIterator();
   }
 }
@@ -629,7 +627,7 @@ size_t IndexBlock::skipSome (size_t atLeast,
 ////////////////////////////////////////////////////////////////////////////////
 
 void IndexBlock::cleanupNonConstExpressions () {
-  for (auto it : _nonConstExpressions) {
+  for (auto& it : _nonConstExpressions) {
     delete it;
   }
   _nonConstExpressions.clear();

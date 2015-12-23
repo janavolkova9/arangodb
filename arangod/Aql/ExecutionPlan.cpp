@@ -93,7 +93,7 @@ ExecutionPlan* ExecutionPlan::instantiateFromAst (Ast* ast) {
   TRI_ASSERT(root != nullptr);
   TRI_ASSERT(root->type == NODE_TYPE_ROOT);
 
-  std::unique_ptr<ExecutionPlan> plan(new ExecutionPlan(ast));
+  auto plan = std::make_unique<ExecutionPlan>(ast);
 
   plan->_root = plan->fromNode(root);
 
@@ -142,7 +142,7 @@ ExecutionPlan* ExecutionPlan::instantiateFromJson (Ast* ast,
                                                    triagens::basics::Json const& json) {
   TRI_ASSERT(ast != nullptr);
 
-  std::unique_ptr<ExecutionPlan> plan(new ExecutionPlan(ast));
+  auto plan = std::make_unique<ExecutionPlan>(ast);
 
   plan->_root = plan->fromJson(json);
   plan->_varUsageComputed = true;
@@ -186,7 +186,7 @@ class CloneNodeAdder final : public WalkerWorker<ExecutionNode> {
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionPlan* ExecutionPlan::clone () {
-  std::unique_ptr<ExecutionPlan> plan(new ExecutionPlan(_ast));
+  auto plan = std::make_unique<ExecutionPlan>(_ast);
 
   plan->_root = _root->clone(plan.get(), true, false);
   plan->_nextId = _nextId;
@@ -211,7 +211,7 @@ ExecutionPlan* ExecutionPlan::clone () {
 ////////////////////////////////////////////////////////////////////////////////
 
 ExecutionPlan* ExecutionPlan::clone (Query const& query) {
-  std::unique_ptr<ExecutionPlan> otherPlan(new ExecutionPlan(query.ast()));
+  auto otherPlan = std::make_unique<ExecutionPlan>(query.ast());
 
   for (auto const& it: _ids) {
     otherPlan->registerNode(it.second->clone(otherPlan.get(), false, true));
@@ -304,7 +304,7 @@ ExecutionNode* ExecutionPlan::createCalculation (Variable* out,
   }
 
   // generate a temporary calculation node
-  std::unique_ptr<Expression> expr(new Expression(_ast, const_cast<AstNode*>(expression)));
+  auto expr = std::make_unique<Expression>(_ast, const_cast<AstNode*>(expression));
 
   CalculationNode* en;
   if (conditionVariable != nullptr) {
@@ -648,6 +648,26 @@ ExecutionNode* ExecutionPlan::fromNodeTraversal (ExecutionNode* previous,
   AstNode const* start = node->getMember(1);
   AstNode const* graph = node->getMember(2);
 
+  if (start->type == NODE_TYPE_OBJECT &&
+      start->isConstant()) {
+    size_t n = start->numMembers();
+    for (size_t i = 0; i < n; ++i) {
+      auto member = start->getMember(i);
+      if (member->type == NODE_TYPE_OBJECT_ELEMENT &&
+          strncmp(member->getStringValue(), TRI_VOC_ATTRIBUTE_ID, member->getStringLength()) == 0) {  
+        start = member->getMember(0);
+        break;
+      }
+    }
+  }
+
+  if (start->type != NODE_TYPE_REFERENCE &&
+      start->type != NODE_TYPE_VALUE) {
+    // operand is some misc expression
+    auto calc = createTemporaryCalculation(start, previous);
+    start = _ast->createNodeReference(getOutVariable(calc));
+    previous = calc;
+  }
   // First create the node
   auto travNode = new TraversalNode(this, nextId(), _ast->query()->vocbase(),
           direction, start, graph);
@@ -1791,7 +1811,8 @@ void ExecutionPlan::replaceNode (ExecutionNode* oldNode,
     oldNode->removeDependency(x);
   }
   
-  auto oldNodeParents = oldNode->getParents();  // Intentional copy
+  // Intentional copy
+  auto oldNodeParents = oldNode->getParents();  
 
   for (auto* oldNodeParent : oldNodeParents) {
     if (! oldNodeParent->replaceDependency(oldNode, newNode)){

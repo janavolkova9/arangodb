@@ -510,7 +510,7 @@ QueryResult Query::prepare (QueryRegistry* registry) {
     init();
     enterState(PARSING);
 
-    std::unique_ptr<Parser> parser(new Parser(this));
+    auto parser = std::make_unique<Parser>(this);
     std::unique_ptr<ExecutionPlan> plan;
     
     if (_queryString != nullptr) {
@@ -1509,7 +1509,8 @@ triagens::arango::TransactionContext* Query::createTransactionContext () {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief create a TransactionContext
+/// @brief look up a graph either from our cache list or from the  _graphs
+///        collection
 ////////////////////////////////////////////////////////////////////////////////
 
 Graph const* Query::lookupGraphByName (std::string &name) {
@@ -1524,7 +1525,6 @@ Graph const* Query::lookupGraphByName (std::string &name) {
   }
   return g;
 }
-
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE

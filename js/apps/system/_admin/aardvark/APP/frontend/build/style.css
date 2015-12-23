@@ -2101,69 +2101,91 @@ textarea,
 
 .button-danger, .ajax-file-upload-red {
   background-color: #da4f49; }
-  .button-danger:hover, .ajax-file-upload-red:hover, .button-danger:focus, .ajax-file-upload-red:focus {
+  .button-danger:hover,
+  .ajax-file-upload-red:hover,
+  .button-danger:focus, .ajax-file-upload-red:focus {
     background-color: #be342e; }
 
 .deleteButton, .contentTables td span, .edit-index-table .icon_arangodb_roundminus {
   color: #da4f49; }
-  .deleteButton:hover, .contentTables td span:hover, .edit-index-table .icon_arangodb_roundminus:hover, .deleteButton:focus, .contentTables td span:focus, .edit-index-table .icon_arangodb_roundminus:focus {
+  .deleteButton:hover,
+  .contentTables td span:hover,
+  .edit-index-table .icon_arangodb_roundminus:hover,
+  .deleteButton:focus, .contentTables td span:focus, .edit-index-table .icon_arangodb_roundminus:focus {
     color: #be342e; }
 
 .button-success, .ajax-file-upload {
   background-color: #8aa051; }
-  .button-success:hover, .ajax-file-upload:hover, .button-success:focus, .ajax-file-upload:focus {
+  .button-success:hover,
+  .ajax-file-upload:hover,
+  .button-success:focus, .ajax-file-upload:focus {
     background-color: #788f3d; }
 
 .addButton, .contentTables td.dbThSecond span {
   color: #8aa051; }
-  .addButton:hover, .contentTables td.dbThSecond span:hover, .addButton:focus, .contentTables td.dbThSecond span:focus {
+  .addButton:hover,
+  .contentTables td.dbThSecond span:hover,
+  .addButton:focus, .contentTables td.dbThSecond span:focus {
     color: #788f3d; }
 
 .button-warning {
   background-color: #faa732; }
-  .button-warning:hover, .button-warning:focus {
+  .button-warning:hover,
+  .button-warning:focus {
     background-color: #f89406; }
 
 .button-neutral, .button-close {
   background-color: #8f8d8c; }
-  .button-neutral:hover, .button-close:hover, .button-neutral:focus, .button-close:focus {
+  .button-neutral:hover,
+  .button-close:hover,
+  .button-neutral:focus, .button-close:focus {
     background-color: #736b68; }
 
 .dashboard-sub-bar-menu {
   color: #8f8d8c; }
-  .dashboard-sub-bar-menu:hover, .dashboard-sub-bar-menu:focus {
+  .dashboard-sub-bar-menu:hover,
+  .dashboard-sub-bar-menu:focus {
     color: #736b68; }
 
 .button-primary {
   background-color: #564e4a; }
-  .button-primary:hover, .button-primary:focus {
+  .button-primary:hover,
+  .button-primary:focus {
     background-color: #3a322e; }
 
 .button-header, a.headerButton, a.button-gui {
   background-color: #fff;
   border: 1px solid #fff;
   color: #555; }
-  .button-header:hover, a.headerButton:hover, a.button-gui:hover, .button-header:focus, a.headerButton:focus, a.button-gui:focus {
+  .button-header:hover,
+  a.headerButton:hover, a.button-gui:hover, .button-header:focus, a.headerButton:focus, a.button-gui:focus {
     background-color: #8aa051;
     border: 1px solid #8aa051;
     color: #fff; }
 
 .button-notification {
   background-color: #faa020; }
-  .button-notification:hover, .button-notification:focus {
+  .button-notification:hover,
+  .button-notification:focus {
     background-color: #f87c0f; }
 
 [class^='button-']:disabled,
-button.disabled, .button-inactive {
+button.disabled,
+[class*=' button-']:disabled, .button-inactive {
   background-color: #d3d3d3; }
   [class^='button-']:hover:disabled,
-  button.disabled:hover, .button-inactive:hover, [class^='button-']:focus:disabled,
-  button.disabled:focus, .button-inactive:focus {
+  button.disabled:hover,
+  [class*=' button-']:hover:disabled,
+  .button-inactive:hover,
+  [class^='button-']:focus:disabled,
+  button.disabled:focus,
+  [class*=' button-']:focus:disabled, .button-inactive:focus {
     background-color: #d3d3d3; }
 
 a.headerButton.disabled {
   color: #d3d3d3; }
-  a.headerButton.disabled:hover, a.headerButton.disabled:focus {
+  a.headerButton.disabled:hover,
+  a.headerButton.disabled:focus {
     color: #d3d3d3; }
 
 div.queryline .fa.fa-search {
@@ -2301,7 +2323,8 @@ div.queryline input, input.search-input, .modal-body .select2-choices input, .mo
       border-top: 1px solid rgba(0, 0, 0, 0.2); }
       .navlist li.dropdown:hover a {
         border-bottom: 2px solid #fff; }
-    .navlist li.navbar-spacer, .navlist li.divider {
+    .navlist li.navbar-spacer,
+    .navlist li.divider {
       border: 0; }
     .navlist li.divider {
       background-color: rgba(0, 0, 0, 0.2); }
@@ -2924,6 +2947,7 @@ div .tile, div .bigtile {
     height: 50px;
     margin-left: 90px;
     margin-top: 10px;
+    position: absolute;
     width: 50px; }
   div .tile .tile-icon, div .bigtile .tile-icon {
     color: #686766;
@@ -3170,7 +3194,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -114px;
-    width: 248px; }
+    width: 248px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -3240,7 +3264,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 14px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 10px;
     font-weight: 400; }
   .dashboard-legend {
@@ -3354,7 +3379,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -234px;
-    width: 488px; }
+    width: 488px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -3424,7 +3449,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 14px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 10px;
     font-weight: 400; }
   .dashboard-legend {
@@ -3538,7 +3564,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -354px;
-    width: 728px; }
+    width: 728px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -3608,7 +3634,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 14px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 10px;
     font-weight: 400; }
   .dashboard-legend {
@@ -3720,7 +3747,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -474px;
-    width: 968px; }
+    width: 968px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -3789,7 +3816,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 16px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 11px;
     font-weight: 400; }
   .dashboard-legend {
@@ -3899,7 +3927,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -594px;
-    width: 1208px; }
+    width: 1208px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -3968,7 +3996,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 20px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 13px;
     font-weight: 400; }
   .dashboard-legend {
@@ -4078,7 +4107,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -714px;
-    width: 1448px; }
+    width: 1448px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -4147,7 +4176,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 24px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 13px;
     font-weight: 400; }
   .dashboard-legend {
@@ -4257,7 +4287,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -834px;
-    width: 1688px; }
+    width: 1688px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -4326,7 +4356,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 28px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 14px;
     font-weight: 400; }
   .dashboard-legend {
@@ -4436,7 +4467,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -954px;
-    width: 1928px; }
+    width: 1928px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -4505,7 +4536,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 32px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 14px;
     font-weight: 400; }
   .dashboard-legend {
@@ -4615,7 +4647,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -1074px;
-    width: 2168px; }
+    width: 2168px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -4684,7 +4716,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 34px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 15px;
     font-weight: 400; }
   .dashboard-legend {
@@ -4794,7 +4827,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -1194px;
-    width: 2408px; }
+    width: 2408px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -4863,7 +4896,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 34px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 15px;
     font-weight: 400; }
   .dashboard-legend {
@@ -4973,7 +5007,7 @@ div .bigtile {
     bottom: 12.1% !important;
     left: 50%;
     margin-left: -1314px;
-    width: 2648px; }
+    width: 2648px !important; }
     .modal-chart-detail .modal-body {
       height: 95%;
       max-height: none;
@@ -5042,7 +5076,8 @@ div .bigtile {
   .dashboard-figurePer {
     font-size: 34px;
     font-weight: 300; }
-  .dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+  .dygraph-axis-label.dygraph-axis-label-y,
+  .dygraph-axis-label.dygraph-axis-label-x {
     font-size: 15px;
     font-weight: 400; }
   .dashboard-legend {
@@ -5087,7 +5122,8 @@ div.centralContent {
     padding-top: 10px; }
   .contentDiv:after {
     clear: both; }
-  .contentDiv:after, .contentDiv:before {
+  .contentDiv:after,
+  .contentDiv:before {
     content: '';
     display: table;
     line-height: 0; }
@@ -5185,7 +5221,9 @@ div.dropdownInner {
       div.dropdownInner ul li .fa.fa-square-o {
         margin-left: 1px;
         margin-right: 6px; }
-      div.dropdownInner ul li .fa.fa-check-circle-o, div.dropdownInner ul li .fa.fa-check-square-o, div.dropdownInner ul li .fa.fa-dot-circle-o {
+      div.dropdownInner ul li .fa.fa-check-circle-o,
+      div.dropdownInner ul li .fa.fa-check-square-o,
+      div.dropdownInner ul li .fa.fa-dot-circle-o {
         color: #8aa051; }
 
 div.queryline {
@@ -5443,6 +5481,9 @@ div.headerBar {
     .modal-header .close:hover, .modal-dashboard-header .close:hover {
       opacity: 1; }
 
+.select2-drop-active {
+  z-index: 9999999; }
+
 .modal-body {
   color: #736b68;
   font-family: 'Open Sans', sans-serif !important;
@@ -5509,9 +5550,13 @@ div.headerBar {
       border-bottom-left-radius: 3px; }
     .modal-body tr.last th:last-child {
       border-bottom-right-radius: 3px; }
-  .modal-body tr.first th:first-child, .modal-body tr.middle th:first-child, .modal-body tr.last th:first-child {
+  .modal-body tr.first th:first-child,
+  .modal-body tr.middle th:first-child,
+  .modal-body tr.last th:first-child {
     padding-left: 10px; }
-  .modal-body tr.first th:last-child, .modal-body tr.middle th:last-child, .modal-body tr.last th:last-child {
+  .modal-body tr.first th:last-child,
+  .modal-body tr.middle th:last-child,
+  .modal-body tr.last th:last-child {
     padding-right: 10px; }
   .modal-body th th.actionCell, .modal-body th th.keyCell, .modal-body th .valueCell {
     text-align: center; }
@@ -5599,7 +5644,8 @@ div.headerBar {
   border: 0 !important;
   border-radius: 3px !important;
   box-shadow: 0;
-  width: 580px; }
+  width: 580px;
+  z-index: 9999999; }
   .modal .fade.in {
     top: 12.1% !important; }
   .modal table tr:last-child {
@@ -5653,6 +5699,11 @@ div.headerBar {
     margin-top: -4px; }
     .modal-delete-confirmation button .modal-confirm-delete {
       margin-right: -18px; }
+  .modal-delete-confirmation fieldset input {
+    float: left; }
+  .modal-delete-confirmation fieldset label {
+    float: left;
+    margin-left: 10px; }
 
 .createModalDialog table {
   width: 100%; }
@@ -6128,7 +6179,8 @@ div.headerBar {
   margin-left: 0;
   margin-right: 0; }
 
-.dygraph-axis-label.dygraph-axis-label-y, .dygraph-axis-label.dygraph-axis-label-x {
+.dygraph-axis-label.dygraph-axis-label-y,
+.dygraph-axis-label.dygraph-axis-label-x {
   color: #666; }
 
 .dashboardModal {
@@ -6591,6 +6643,29 @@ toolbar {
   min-height: 200px;
   padding-top: 13px; }
 
+.arangoFrame {
+  background-color: rgba(0, 0, 0, 0.5);
+  bottom: 0;
+  display: none;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 77777; }
+  .arangoFrame .outerDiv {
+    min-height: 100%;
+    padding: 40px;
+    z-index: 88888; }
+  .arangoFrame .innerDiv {
+    z-index: 99999; }
+  .arangoFrame .fa-times {
+    color: #fff;
+    float: right;
+    font-size: 12pt; }
+  .arangoFrame .fa-times:hover {
+    color: #c2c2c2;
+    cursor: pointer; }
+
 .container {
   margin-left: 20px;
   margin-right: 20px;
@@ -6718,7 +6793,8 @@ toolbar {
       position: relative;
       top: 2px; }
     .pagination-line li:last-child a,
-    .pagination-line li:last-child span, .pagination-line li:first-child a,
+    .pagination-line li:last-child span,
+    .pagination-line li:first-child a,
     .pagination-line li:first-child span {
       -webkit-box-shadow: 0;
       -moz-box-shadow: 0;
@@ -6730,7 +6806,8 @@ toolbar {
       position: relative;
       width: 14px; }
     .pagination-line li.disabled:last-child a,
-    .pagination-line li.disabled:last-child span, .pagination-line li.disabled:first-child a,
+    .pagination-line li.disabled:last-child span,
+    .pagination-line li.disabled:first-child a,
     .pagination-line li.disabled:first-child span {
       background-color: #777;
       color: #666;
@@ -6757,6 +6834,9 @@ toolbar {
 
 .accordion-group {
   border: 0; }
+
+.accordion-body {
+  height: auto !important; }
 
 .accordion-heading a {
   border: 1px solid #ccc;
@@ -7057,11 +7137,16 @@ div.gv-background {
 .link > line {
   stroke-width: 1; }
 
+div.gv-colour-list:hover {
+  opacity: 1; }
+
 div.gv-colour-list {
   border-radius: 3px;
   max-height: 350px;
-  max-width: 130px;
-  overflow-x: none !important;
+  max-width: 300px;
+  min-width: 190px;
+  opacity: .1;
+  overflow-x: hidden !important;
   overflow-y: auto;
   position: absolute;
   right: 8px;
@@ -7181,6 +7266,7 @@ input.gv-radio-button {
   width: 100%; }
 
 #infoTab,
+#graphTab,
 #collectionTab {
   border-bottom: 0;
   margin-bottom: 1px;
@@ -7188,10 +7274,12 @@ input.gv-radio-button {
   padding-right: 10px; }
 
 #infoTab li,
+#graphTab li,
 #collectionTab li {
   float: right; }
 
 #infoTab a,
+#graphTab a,
 #collectionTab a {
   background-color: #8c8a89;
   border-bottom: 1px solid #666;
@@ -7205,6 +7293,7 @@ input.gv-radio-button {
   padding: 2px 15px !important; }
 
 #infoTab .active > a,
+#graphTab .active > a,
 #collectionTab .active > a {
   background-color: #fff;
   border-color: #888 #888 transparent !important;

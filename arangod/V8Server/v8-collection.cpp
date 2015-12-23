@@ -239,7 +239,7 @@ static int ParseDocumentOrDocumentHandle (TRI_vocbase_t* vocbase,
 
     if (ServerState::instance()->isCoordinator()) {
       ClusterInfo* ci = ClusterInfo::instance();
-      shared_ptr<CollectionInfo> const& c = ci->getCollection(vocbase->_name, collectionName);
+      std::shared_ptr<CollectionInfo> c = ci->getCollection(vocbase->_name, collectionName);
       col = CoordinatorCollection(vocbase, *c);
 
       if (col != nullptr && col->_cid == 0) {
@@ -335,7 +335,8 @@ static void DocumentVocbaseColCoordinator (TRI_vocbase_col_t const* collection,
   }
 
   triagens::rest::HttpResponse::HttpResponseCode responseCode;
-  map<string, string> headers;
+  std::unique_ptr<std::map<std::string, std::string>> headers
+      (new std::map<std::string, std::string>());
   map<string, string> resultHeaders;
   string resultBody;
 
@@ -545,7 +546,7 @@ static TRI_vocbase_col_t const* UseCollection (v8::Handle<v8::Object> collection
 static std::vector<TRI_vocbase_col_t*> GetCollectionsCluster (TRI_vocbase_t* vocbase) {
   std::vector<TRI_vocbase_col_t*> result;
 
-  std::vector<shared_ptr<CollectionInfo> > const& collections
+  std::vector<shared_ptr<CollectionInfo>> const collections
       = ClusterInfo::instance()->getCollections(vocbase->_name);
 
   for (size_t i = 0, n = collections.size(); i < n; ++i) {
@@ -566,7 +567,7 @@ static std::vector<TRI_vocbase_col_t*> GetCollectionsCluster (TRI_vocbase_t* voc
 static std::vector<std::string> GetCollectionNamesCluster (TRI_vocbase_t* vocbase) {
   std::vector<std::string> result;
 
-  std::vector<shared_ptr<CollectionInfo> > const& collections
+  std::vector<shared_ptr<CollectionInfo>> const collections
       = ClusterInfo::instance()->getCollections(vocbase->_name);
 
   for (size_t i = 0, n = collections.size(); i < n; ++i) {
@@ -712,7 +713,8 @@ static void ModifyVocbaseColCoordinator (TRI_vocbase_col_t const* collection,
   }
 
   triagens::rest::HttpResponse::HttpResponseCode responseCode;
-  map<string, string> headers;
+  std::unique_ptr<std::map<std::string, std::string>> headers
+      (new std::map<std::string, std::string>());
   map<string, string> resultHeaders;
   string resultBody;
 
@@ -1303,7 +1305,8 @@ static void RemoveVocbaseColCoordinator (TRI_vocbase_col_t const* collection,
   triagens::rest::HttpResponse::HttpResponseCode responseCode;
   map<string, string> resultHeaders;
   string resultBody;
-  map<string, string> headers;
+  std::unique_ptr<std::map<std::string, std::string>> headers
+      (new std::map<std::string, std::string>());
 
   error = triagens::arango::deleteDocumentOnCoordinator(
             dbname, collname, key, rev, policy, waitForSync, headers,
@@ -1748,11 +1751,24 @@ static TRI_doc_collection_info_t* GetFigures (TRI_vocbase_col_t* collection) {
 /// * *uncollectedLogfileEntries*: The number of markers in the write-ahead
 ///   log for this collection that have not been transferred to journals or
 ///   datafiles.
+/// * *documentReferences*: The number of references to documents in datafiles
+///   that JavaScript code currently holds. This information can be used for
+///   debugging compaction and unload issues.
+/// * *waitingFor*: An optional string value that contains information about
+///   which object type is at the head of the collection's cleanup queue. This 
+///   information can be used for debugging compaction and unload issues.
+/// * *compactionStatus.time*: The point in time the compaction for the collection
+///   was last executed. This information can be used for debugging compaction
+///   issues.
+/// * *compactionStatus.message*: The action that was performed when the compaction
+///   was last run for the collection. This information can be used for debugging
+///   compaction issues.
 ///
 /// **Note**: collection data that are stored in the write-ahead log only are
 /// not reported in the results. When the write-ahead log is collected, documents
 /// might be added to journals and datafiles of the collection, which may modify 
-/// the figures of the collection.
+/// the figures of the collection. Also note that `waitingFor` and `compactionStatus` 
+/// may be empty when called on a coordinator in a cluster.
 ///
 /// Additionally, the filesizes of collection and index parameter JSON files are
 /// not reported. These files should normally have a size of a few bytes
@@ -1863,6 +1879,24 @@ static void JS_FiguresVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& arg
 
   result->Set(TRI_V8_ASCII_STRING("lastTick"),   V8TickId(isolate, info->_tickMax));
   result->Set(TRI_V8_ASCII_STRING("uncollectedLogfileEntries"), v8::Number::New(isolate, (double) info->_uncollectedLogfileEntries));
+  result->Set(TRI_V8_ASCII_STRING("documentReferences"), v8::Number::New(isolate, (double) info->_numberDocumentDitches));
+
+  char const* wfd = "-";
+  if (info->_waitingForDitch != nullptr) {
+    wfd = info->_waitingForDitch;
+  }
+  result->Set(TRI_V8_ASCII_STRING("waitingFor"), TRI_V8_ASCII_STRING(wfd));
+
+  v8::Handle<v8::Object> compaction = v8::Object::New(isolate);
+  if (info->_lastCompactionStatus != nullptr) {
+    compaction->Set(TRI_V8_ASCII_STRING("message"), TRI_V8_ASCII_STRING(info->_lastCompactionStatus));
+    compaction->Set(TRI_V8_ASCII_STRING("time"), TRI_V8_ASCII_STRING(&info->_lastCompactionStamp[0]));
+  }
+  else {
+    compaction->Set(TRI_V8_ASCII_STRING("message"), TRI_V8_ASCII_STRING("-"));
+    compaction->Set(TRI_V8_ASCII_STRING("time"), TRI_V8_ASCII_STRING("-"));
+  }
+  result->Set(TRI_V8_ASCII_STRING("compactionStatus"), compaction);
 
   TRI_Free(TRI_UNKNOWN_MEM_ZONE, info);
 
@@ -2183,7 +2217,9 @@ static void JS_PropertiesVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& 
     result->Set(TRI_V8_ASCII_STRING("indexBuckets"),
                 v8::Number::New(isolate, info._indexBuckets));
 
-    shared_ptr<CollectionInfo> c = ClusterInfo::instance()->getCollection(databaseName, StringUtils::itoa(collection->_cid));
+    std::shared_ptr<CollectionInfo> c 
+        = ClusterInfo::instance()->getCollection(databaseName,
+            StringUtils::itoa(collection->_cid));
     v8::Handle<v8::Array> shardKeys = v8::Array::New(isolate);
     vector<string> const sks = (*c).shardKeys();
     for (size_t i = 0; i < sks.size(); ++i) {
@@ -2419,6 +2455,31 @@ static void JS_RemoveVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& args
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// @brief helper function to rename collections in _graphs as well
+////////////////////////////////////////////////////////////////////////////////
+
+static int RenameGraphCollections (v8::Isolate* isolate, 
+                                   std::string const& oldName, 
+                                   std::string const& newName) {
+  v8::HandleScope scope(isolate);
+
+  StringBuffer buffer(TRI_UNKNOWN_MEM_ZONE);
+  buffer.appendText("require('@arangodb/general-graph')._renameCollection(\"");
+  buffer.appendJsonEncoded(oldName.c_str(), oldName.size());
+  buffer.appendText("\", \"");
+  buffer.appendJsonEncoded(newName.c_str(), newName.size());
+  buffer.appendText("\");");
+
+  TRI_ExecuteJavaScriptString(isolate,
+                              isolate->GetCurrentContext(),
+                              TRI_V8_ASCII_PAIR_STRING(buffer.c_str(), buffer.length()),
+                              TRI_V8_ASCII_STRING("collection rename"),
+                              false);
+
+  return TRI_ERROR_NO_ERROR;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// @brief renames a collection
 /// @startDocuBlock collectionRename
 /// `collection.rename(new-name)`
@@ -2429,6 +2490,8 @@ static void JS_RemoveVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& args
 /// to the [naming conventions](../NamingConventions/README.md).
 ///
 /// If renaming fails for any reason, an error is thrown.
+/// If renaming the collection succeeds, then the collection is also renamed in 
+/// all graph definitions inside the `_graphs` collection in the current database.
 ///
 /// **Note**: this method is not available in a cluster.
 ///
@@ -2458,7 +2521,7 @@ static void JS_RenameVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& args
     TRI_V8_THROW_EXCEPTION(TRI_ERROR_CLUSTER_UNSUPPORTED);
   }
 
-  string const name = TRI_ObjectToString(args[0]);
+  std::string const name = TRI_ObjectToString(args[0]);
 
   // second parameter "override" is to override renaming restrictions, e.g.
   // renaming from a system collection name to a non-system collection name and
@@ -2485,6 +2548,8 @@ static void JS_RenameVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& args
     TRI_V8_THROW_EXCEPTION(TRI_ERROR_CLUSTER_UNSUPPORTED);
   }
 
+  std::string const oldName(collection->_name);
+
   int res = TRI_RenameCollectionVocBase(collection->_vocbase,
                                         collection,
                                         name.c_str(),
@@ -2494,6 +2559,9 @@ static void JS_RenameVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& args
   if (res != TRI_ERROR_NO_ERROR) {
     TRI_V8_THROW_EXCEPTION_MESSAGE(res, "cannot rename collection");
   }
+
+  // rename collection inside _graphs as well
+  RenameGraphCollections(isolate, oldName, name);
 
   TRI_V8_RETURN_UNDEFINED();
   TRI_V8_TRY_CATCH_END
@@ -3284,7 +3352,7 @@ static void JS_StatusVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& args
   if (ServerState::instance()->isCoordinator()) {
     std::string const databaseName = std::string(collection->_dbName);
 
-    shared_ptr<CollectionInfo> const& ci
+    shared_ptr<CollectionInfo> const ci
         = ClusterInfo::instance()->getCollection(databaseName,
                                         StringUtils::itoa(collection->_cid));
 
@@ -3452,7 +3520,7 @@ static void JS_TypeVocbaseCol (const v8::FunctionCallbackInfo<v8::Value>& args) 
   if (ServerState::instance()->isCoordinator()) {
     std::string const databaseName = std::string(collection->_dbName);
 
-    shared_ptr<CollectionInfo> const& ci
+    shared_ptr<CollectionInfo> const ci
         = ClusterInfo::instance()->getCollection(databaseName,
                                       StringUtils::itoa(collection->_cid));
 
@@ -3748,7 +3816,7 @@ static void JS_CollectionVocbase (const v8::FunctionCallbackInfo<v8::Value>& arg
 
   if (ServerState::instance()->isCoordinator()) {
     string const name = TRI_ObjectToString(val);
-    shared_ptr<CollectionInfo> const& ci
+    shared_ptr<CollectionInfo> const ci
         = ClusterInfo::instance()->getCollection(vocbase->_name, name);
 
     if ((*ci).id() == 0 || (*ci).empty()) {

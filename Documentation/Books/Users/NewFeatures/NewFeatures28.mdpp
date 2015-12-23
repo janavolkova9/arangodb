@@ -132,6 +132,38 @@ FOR doc IN collection FILTER doc.value1 == 42 || doc.value2 == 23 RETURN doc
 FOR doc IN collection FILTER doc.value1 < 42 || doc.value2 > 23 RETURN doc
 ```
 
+The new optimizer rule "sort-in-values" can now pre-sort the right-hand side operand 
+of `IN` and `NOT IN` operators so the operation can use a binary search with logarithmic 
+complexity instead of a linear search. The rule will be applied when the right-hand side
+operand of an `IN` or `NOT IN` operator in a filter condition is a variable that is defined 
+in a different loop/scope than the operator itself. Additionally, the filter condition must 
+consist of solely the `IN` or `NOT IN` operation in order to avoid any side-effects. 
+
+The rule will kick in for a queries such as the following:
+
+```
+LET values = /* some runtime expression here */
+FOR doc IN collection
+  FILTER doc.value IN values
+  RETURN doc
+```
+
+It will not be applied for the followig queries, because the right-hand side operand of the
+`IN` is either not a variable, or because the FILTER condition may have side effects:
+
+```
+FOR doc IN collection
+  FILTER doc.value IN /* some runtime expression here */
+  RETURN doc
+```
+
+```
+LET values = /* some runtime expression here */
+FOR doc IN collection
+  FILTER FUNCTION(doc.values) == 23 && doc.value IN values
+  RETURN doc
+```
+
 
 !SUBSECTION AQL functions added
 
@@ -159,6 +191,11 @@ The following AQL functions have been added in 2.8:
 * the ArangoShell now provides the convenience function `db._explain(query)` for retrieving 
   a human-readable explanation of AQL queries. This function is a shorthand for
   `require("org/arangodb/aql/explainer").explain(query)`.
+
+* the AQL query optimizer now automatically converts `LENGTH(collection-name)` to an optimized 
+  expression that returns the number of documents in a collection. Previous versions of 
+  ArangoDB returned a warning when using this expression and also enumerated all documents
+  in the collection, which was inefficient.
 
 * improved performance of skipping over many documents in an AQL query when no
   indexes and no filters are used, e.g.
@@ -284,6 +321,19 @@ The following improvements have been made for the web admin interface:
   the bottom of the page. This can be used to track either the status of a one-time
   synchronization or the continuous replication.
 
+* the compaction status and some status internals about collections are now displayed
+  in the detail view for a collection in the web interface. These data can be used
+  for debugging compaction issues.
+
+* unloading a collection via the web interface will now trigger garbage collection
+  in all v8 contexts and force a WAL flush. This increases the chances of perfoming
+  the unload faster.
+
+* the status terminology for collections for which an unload request has been issued 
+  via the web interface was changed from `in the process of being unloaded` to 
+  `will be unloaded`. This is more accurate as the actual unload may be postponed
+  until later if there are still references pointing to data in the collection.
+
 
 !SECTION Foxx improvements
 
@@ -300,3 +350,14 @@ The startup option `--server.hide-product-header` can be used to make the server
 not send the HTTP response header `"Server: ArangoDB"` in its HTTP responses. This
 can be used to conceal the server make from HTTP clients.
 By default, the option is turned off so the header is still sent as usual.
+
+arangodump and arangorestore now have better error reporting. Additionally, arangodump 
+will now fail by default when trying to dump edges that refer to already dropped 
+collections. This can be circumvented by specifying the option `--force true` when 
+invoking arangodump.
+
+arangoimp now provides an option `--create-collection-type` to specify the type of 
+the collection to be created when `--create-collection` is set to `true`. Previously
+`--create-collection` always created document collections and the creation of edge
+collections was not possible. 
+

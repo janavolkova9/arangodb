@@ -116,8 +116,6 @@
 /// @brief available features
 ////////////////////////////////////////////////////////////////////////////////
 
-#define GLOBAL_TIMEZONE                     timezone
-
 #define TRI_HAVE_POSIX                      1
 
 #define TRI_HAVE_MACOS_MEM_STATS            1
@@ -167,8 +165,10 @@
 /// @brief files
 ////////////////////////////////////////////////////////////////////////////////
 
-#define TRI_DIR_SEPARATOR_CHAR              '/'
-#define TRI_DIR_SEPARATOR_STR               "/"
+#define TRI_DIR_SEPARATOR_CHAR          '/'
+#define TRI_DIR_SEPARATOR_STR           "/"
+
+#define TRI_O_CLOEXEC                   O_CLOEXEC        
 
 #define TRI_CHDIR                       chdir
 #define TRI_CLOSE                       close
@@ -324,14 +324,16 @@
 /// @brief files
 ////////////////////////////////////////////////////////////////////////////////
 
-#define TRI_DIR_SEPARATOR_CHAR              '/'
-#define TRI_DIR_SEPARATOR_STR               "/"
+#define TRI_DIR_SEPARATOR_CHAR          '/'
+#define TRI_DIR_SEPARATOR_STR           "/"
+
+#define TRI_O_CLOEXEC                   O_CLOEXEC
 
 #define TRI_CHDIR                       chdir
 #define TRI_CLOSE                       close
 #define TRI_CREATE(a,b,c)               open((a), (b), (c))
-#define TRI_LSEEK                       lseek
 #define TRI_GETCWD                      getcwd
+#define TRI_LSEEK                       lseek
 #define TRI_MKDIR(a,b)                  mkdir((a), (b))
 #define TRI_OPEN(a,b)                   open((a), (b))
 #define TRI_READ                        read
@@ -459,8 +461,6 @@
 /// @brief available features
 ////////////////////////////////////////////////////////////////////////////////
 
-#define GLOBAL_TIMEZONE                     timezone
-
 #define TRI_GCC_THREAD_LOCAL_STORAGE        1
 
 #define TRI_HAVE_POSIX                      1
@@ -497,14 +497,16 @@
 /// @brief files
 ////////////////////////////////////////////////////////////////////////////////
 
-#define TRI_DIR_SEPARATOR_CHAR              '/'
-#define TRI_DIR_SEPARATOR_STR               "/"
+#define TRI_DIR_SEPARATOR_CHAR          '/'
+#define TRI_DIR_SEPARATOR_STR           "/"
+
+#define TRI_O_CLOEXEC                   O_CLOEXEC
 
 #define TRI_CHDIR                       chdir
 #define TRI_CLOSE                       close
 #define TRI_CREATE(a,b,c)               open((a), (b), (c))
-#define TRI_LSEEK                       lseek
 #define TRI_GETCWD                      getcwd
+#define TRI_LSEEK                       lseek
 #define TRI_MKDIR(a,b)                  mkdir((a), (b))
 #define TRI_OPEN(a,b)                   open((a), (b))
 #define TRI_READ                        read
@@ -640,9 +642,6 @@
 
 #define TRI_HAVE_LINENOISE                  1
 
-#define GLOBAL_TIMEZONE                     _timezone
-#define TRI_HAVE_GLOBAL_TIMEZONE_PROTO      1
-
 #define YY_NO_UNISTD_H                      1
 
 #define TRI_WIN32_CONSOLE                   1
@@ -727,6 +726,8 @@ typedef unsigned char bool;
 #define S_IWUSR _S_IWRITE
 #define S_IRGRP _S_IREAD
 #define S_IWGRP _S_IWRITE
+
+#define TRI_O_CLOEXEC                   0 
 
 #define O_RDONLY                        _O_RDONLY
 #define TRI_CHDIR                       _chdir

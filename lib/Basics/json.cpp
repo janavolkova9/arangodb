@@ -998,7 +998,7 @@ bool TRI_SaveJson (char const* filename,
     TRI_UnlinkFile(tmp);
   }
 
-  int fd = TRI_CREATE(tmp, O_CREAT | O_TRUNC | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+  int fd = TRI_CREATE(tmp, O_CREAT | O_TRUNC | O_EXCL | O_RDWR | TRI_O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 
   if (fd < 0) {
     TRI_set_errno(TRI_ERROR_SYS_ERROR);
@@ -1095,8 +1095,8 @@ int TRI_CopyToJson (TRI_memory_zone_t* zone,
       }
 
       for (size_t i = 0;  i < n;  ++i) {
-        TRI_json_t const* v = static_cast<TRI_json_t const*>(TRI_AtVector(&src->_value._objects, i));
-        TRI_json_t* w = static_cast<TRI_json_t*>(TRI_AtVector(&dst->_value._objects, i));
+        auto const* v = static_cast<TRI_json_t const*>(TRI_AtVector(&src->_value._objects, i));
+        auto* w = static_cast<TRI_json_t*>(TRI_AtVector(&dst->_value._objects, i));
 
         res = TRI_CopyToJson(zone, w, v);
 

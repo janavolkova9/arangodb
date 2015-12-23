@@ -507,7 +507,7 @@ uint64_t RestReplicationHandler::determineChunkSize () const {
 /// Returns the state of the replication logger.
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationLoggerStateActive}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///
 ///     var url = "/_api/replication/logger-state";
 ///
@@ -986,21 +986,21 @@ void RestReplicationHandler::handleTrampolineCoordinator () {
 
   string const& dbname = _request->databaseName();
 
-  map<string, string> headers = triagens::arango::getForwardableRequestHeaders(_request);
+  auto headers = std::make_shared<std::map<std::string, std::string>>
+      (triagens::arango::getForwardableRequestHeaders(_request));
   map<string, string> values = _request->values();
   string params;
-  map<string, string>::iterator i;
-  for (i = values.begin(); i != values.end(); ++i) {
-    if (i->first != "DBserver") {
+  for (auto const& i : values) {
+    if (i.first != "DBserver") {
       if (params.empty()) {
         params.push_back('?');
       }
       else {
         params.push_back('&');
       }
-      params.append(StringUtils::urlEncode(i->first));
+      params.append(StringUtils::urlEncode(i.first));
       params.push_back('=');
-      params.append(StringUtils::urlEncode(i->second));
+      params.append(StringUtils::urlEncode(i.second));
     }
   }
 
@@ -1008,17 +1008,15 @@ void RestReplicationHandler::handleTrampolineCoordinator () {
   ClusterComm* cc = ClusterComm::instance();
 
   // Send a synchronous request to that shard using ClusterComm:
-  ClusterCommResult* res;
-  res = cc->syncRequest("", TRI_NewTickServer(), "server:" + DBserver,
-                        _request->requestType(),
-                        "/_db/" + StringUtils::urlEncode(dbname) +
-                        _request->requestPath() + params,
-                        string(_request->body(),_request->bodySize()),
-                        headers, 300.0);
+  auto res = cc->syncRequest("", TRI_NewTickServer(), "server:" + DBserver,
+      _request->requestType(),
+      "/_db/" + StringUtils::urlEncode(dbname) +
+      _request->requestPath() + params,
+      string(_request->body(),_request->bodySize()),
+      *headers, 300.0);
 
   if (res->status == CL_COMM_TIMEOUT) {
     // No reply, we give up:
-    delete res;
     generateError(HttpResponse::BAD, TRI_ERROR_CLUSTER_TIMEOUT,
                   "timeout within cluster");
     return;
@@ -1027,7 +1025,6 @@ void RestReplicationHandler::handleTrampolineCoordinator () {
     // This could be a broken connection or an Http error:
     if (res->result == nullptr || !res->result->isComplete()) {
       // there is no result
-      delete res;
       generateError(HttpResponse::BAD, TRI_ERROR_CLUSTER_CONNECTION_LOST,
                     "lost connection within cluster");
       return;
@@ -1047,7 +1044,6 @@ void RestReplicationHandler::handleTrampolineCoordinator () {
   for (auto const& it : resultHeaders) {
     _response->setHeader(it.first, it.second);
   }
-  delete res;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1191,7 +1187,7 @@ void RestReplicationHandler::handleTrampolineCoordinator () {
 /// No log events available
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationLoggerFollowEmpty}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     var lastTick = re.logger.state().state.lastLogTick;
 ///
 ///     var url = "/_api/replication/logger-follow?from=" + lastTick;
@@ -1205,7 +1201,7 @@ void RestReplicationHandler::handleTrampolineCoordinator () {
 /// A few log events
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationLoggerFollowSome}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     db._drop("products");
 ///
 ///     var lastTick = re.logger.state().state.lastLogTick;
@@ -1229,7 +1225,7 @@ void RestReplicationHandler::handleTrampolineCoordinator () {
 /// More events than would fit into the response
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationLoggerFollowBufferLimit}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     db._drop("products");
 ///
 ///     var lastTick = re.logger.state().state.lastLogTick;
@@ -2172,7 +2168,7 @@ int RestReplicationHandler::processRestoreCollectionCoordinator (
 
   // in a cluster, we only look up by name:
   ClusterInfo* ci = ClusterInfo::instance();
-  shared_ptr<CollectionInfo> col = ci->getCollection(dbName, name);
+  std::shared_ptr<CollectionInfo> col = ci->getCollection(dbName, name);
 
   // drop an existing collection if it exists
   if (! col->empty()) {
@@ -2231,7 +2227,7 @@ int RestReplicationHandler::processRestoreCollectionCoordinator (
   // create a dummy primary index
   {
     TRI_document_collection_t* doc = nullptr;
-    std::unique_ptr<triagens::arango::PrimaryIndex> primaryIndex(new triagens::arango::PrimaryIndex(doc));
+    auto primaryIndex = std::make_unique<triagens::arango::PrimaryIndex>(doc);
 
     auto idxJson = primaryIndex->toJson(TRI_UNKNOWN_MEM_ZONE, false);
 
@@ -2250,7 +2246,7 @@ int RestReplicationHandler::processRestoreCollectionCoordinator (
 
   if (collectionType == TRI_COL_TYPE_EDGE) {
     // create a dummy edge index
-    std::unique_ptr<triagens::arango::EdgeIndex> edgeIndex(new triagens::arango::EdgeIndex(new_id_tick, nullptr));
+    auto edgeIndex = std::make_unique<triagens::arango::EdgeIndex>(new_id_tick, nullptr);
 
     auto idxJson = edgeIndex->toJson(TRI_UNKNOWN_MEM_ZONE, false);
 
@@ -2259,8 +2255,11 @@ int RestReplicationHandler::processRestoreCollectionCoordinator (
 
   TRI_Insert3ObjectJson(TRI_UNKNOWN_MEM_ZONE, parameters, "indexes", indexes);
 
+  std::shared_ptr<arangodb::velocypack::Builder> builder 
+      = triagens::basics::JsonHelper::toVelocyPack(parameters);
+
   int res = ci->createCollectionCoordinator(dbName, new_id, numberOfShards,
-                                            parameters, errorMsg, 0.0);
+                                            builder->slice(), errorMsg, 0.0);
 
   if (res != TRI_ERROR_NO_ERROR) {
     errorMsg = "unable to create collection: " + string(TRI_errno_string(res));
@@ -2426,7 +2425,7 @@ int RestReplicationHandler::processRestoreIndexesCoordinator (
 
   // in a cluster, we only look up by name:
   ClusterInfo* ci = ClusterInfo::instance();
-  shared_ptr<CollectionInfo> col = ci->getCollection(dbName, name);
+  std::shared_ptr<CollectionInfo> col = ci->getCollection(dbName, name);
 
   if (col->empty()) {
     errorMsg = "could not find collection '" + name + "'";
@@ -2803,7 +2802,7 @@ void RestReplicationHandler::handleCommandRestoreDataCoordinator () {
 
   // in a cluster, we only look up by name:
   ClusterInfo* ci = ClusterInfo::instance();
-  shared_ptr<CollectionInfo> col = ci->getCollection(dbName, name);
+  std::shared_ptr<CollectionInfo> col = ci->getCollection(dbName, name);
 
   if (col->empty()) {
     generateError(HttpResponse::BAD, TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND);
@@ -2811,16 +2810,15 @@ void RestReplicationHandler::handleCommandRestoreDataCoordinator () {
   }
 
   // We need to distribute the documents we get over the shards:
-  map<ShardID, ServerID> shardIdsMap = col->shardIds();
-  map<string, size_t> shardTab;
-  vector<string> shardIds;
-  map<ShardID, ServerID>::iterator it;
-  map<string, size_t>::iterator it2;
-  for (it = shardIdsMap.begin(); it != shardIdsMap.end(); ++it) {
-    shardTab.insert(make_pair(it->first,shardIds.size()));
-    shardIds.push_back(it->first);
+  auto shardIdsMap = col->shardIds();
+
+  std::unordered_map<std::string, size_t> shardTab;
+  std::vector<std::string> shardIds;
+  for (auto const& p : *shardIdsMap) {
+    shardTab.insert(make_pair(p.first, shardIds.size()));
+    shardIds.push_back(p.first);
   }
-  vector<StringBuffer*> bufs;
+  std::vector<StringBuffer*> bufs;
   size_t j;
   for (j = 0; j < shardIds.size(); j++) {
     bufs.push_back(new StringBuffer(TRI_UNKNOWN_MEM_ZONE));
@@ -2922,16 +2920,16 @@ void RestReplicationHandler::handleCommandRestoreDataCoordinator () {
           break;
         }
         else {
-          it2 = shardTab.find(responsibleShard);
-          if (it2 == shardTab.end()) {
+          auto it = shardTab.find(responsibleShard);
+          if (it == shardTab.end()) {
             TRI_FreeJson(TRI_CORE_MEM_ZONE, json);
             errorMsg = "cannot find responsible shard";
             res = TRI_ERROR_INTERNAL;
             break;
           }
           else {
-            bufs[it2->second]->appendText(ptr, pos-ptr);
-            bufs[it2->second]->appendText("\n");
+            bufs[it->second]->appendText(ptr, pos-ptr);
+            bufs[it->second]->appendText("\n");
           }
         }
       }
@@ -2962,7 +2960,6 @@ void RestReplicationHandler::handleCommandRestoreDataCoordinator () {
     ClusterComm* cc = ClusterComm::instance();
 
     // Send a synchronous request to that shard using ClusterComm:
-    ClusterCommResult* result;
     CoordTransactionID coordTransactionID = TRI_NewTickServer();
 
     char const* value;
@@ -2975,37 +2972,37 @@ void RestReplicationHandler::handleCommandRestoreDataCoordinator () {
       }
     }
 
-    for (it = shardIdsMap.begin(); it != shardIdsMap.end(); ++it) {
-      map<string, string>* headers = new map<string, string>;
-      it2 = shardTab.find(it->first);
-      if (it2 == shardTab.end()) {
+    for (auto const& p : *shardIdsMap) {
+      auto it = shardTab.find(p.first);
+      if (it == shardTab.end()) {
         errorMsg = "cannot find shard";
         res = TRI_ERROR_INTERNAL;
       }
       else {
-        j = it2->second;
-        std::shared_ptr<std::string const> body
-            (new string(bufs[j]->c_str(), bufs[j]->length()));
-        result = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                               triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
-                               "/_db/" + StringUtils::urlEncode(dbName) +
-                               "/_api/replication/restore-data?collection=" +
-                               it->first + forceopt, body,
-                               headers, nullptr, 300.0);
-        delete result;
+        std::unique_ptr<std::map<std::string, std::string>> headers
+            (new std::map<std::string, std::string>());
+        j = it->second;
+        auto body = make_shared<std::string const>
+            (bufs[j]->c_str(), bufs[j]->length());
+        cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+                      triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
+                      "/_db/" + StringUtils::urlEncode(dbName) +
+                      "/_api/replication/restore-data?collection=" +
+                      p.first + forceopt, body,
+                      headers, nullptr, 300.0);
       }
     }
 
     // Now listen to the results:
     unsigned int count;
     unsigned int nrok = 0;
-    for (count = (int) shardIdsMap.size(); count > 0; count--) {
-      result = cc->wait( "", coordTransactionID, 0, "", 0.0);
-      if (result->status == CL_COMM_RECEIVED) {
-        if (result->answer_code == triagens::rest::HttpResponse::OK ||
-            result->answer_code == triagens::rest::HttpResponse::CREATED) {
+    for (count = (int) shardIdsMap->size(); count > 0; count--) {
+      auto result = cc->wait( "", coordTransactionID, 0, "", 0.0);
+      if (result.status == CL_COMM_RECEIVED) {
+        if (result.answer_code == triagens::rest::HttpResponse::OK ||
+            result.answer_code == triagens::rest::HttpResponse::CREATED) {
           TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE,
-                                            result->answer->body());
+                                            result.answer->body());
 
           if (JsonHelper::isObject(json)) {
             TRI_json_t const* r = TRI_LookupObjectJson(json, "result");
@@ -3028,9 +3025,9 @@ void RestReplicationHandler::handleCommandRestoreDataCoordinator () {
             TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
           }
         }
-        else if (result->answer_code == triagens::rest::HttpResponse::SERVER_ERROR) {
+        else if (result.answer_code == triagens::rest::HttpResponse::SERVER_ERROR) {
           TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE,
-                                            result->answer->body());
+                                            result.answer->body());
 
           if (JsonHelper::isObject(json)) {
             TRI_json_t const* m = TRI_LookupObjectJson(json, "errorMessage");
@@ -3047,10 +3044,9 @@ void RestReplicationHandler::handleCommandRestoreDataCoordinator () {
         }
 
       }
-      delete result;
     }
 
-    if (nrok != shardIdsMap.size()) {
+    if (nrok != shardIdsMap->size()) {
       errorMsg.append("some shard(s) produced error(s)");
       res = TRI_ERROR_INTERNAL;
     }
@@ -3123,7 +3119,7 @@ void RestReplicationHandler::handleCommandCreateKeys () {
     }
 
     // initialize a container with the keys
-    std::unique_ptr<CollectionKeys> keys(new CollectionKeys(_vocbase, col->_name, id, 300.0));
+    auto keys = std::make_unique<CollectionKeys>(_vocbase, col->_name, id, 300.0);
     
     std::string const idString(std::to_string(keys->id()));
 
@@ -3750,6 +3746,13 @@ void RestReplicationHandler::handleCommandDump () {
 /// the master in case the master cannot serve log data requested by the slave,
 /// or when the replication is started and no tick value can be found.
 ///
+/// @RESTBODYPARAM{autoResyncRetries,integer,optional,int64}
+/// number of resynchronization retries that will be performed in a row when
+/// automatic resynchronization is enabled and kicks in. Setting this to *0* will
+/// effectively disable *autoResync*. Setting it to some other value will limit
+/// the number of retries that are performed. This helps preventing endless retries
+/// in case resynchronizations always fail.
+///
 /// @RESTBODYPARAM{initialSyncMaxWaitTime,integer,optional,int64}
 /// the maximum wait time (in seconds) that the initial synchronization will
 /// wait for a response from the master when fetching initial collection data.
@@ -3949,11 +3952,12 @@ void RestReplicationHandler::handleCommandMakeSlave () {
   config._verbose                 = JsonHelper::getBooleanValue(json.get(), "verbose", defaults._verbose);
   config._requireFromPresent      = JsonHelper::getBooleanValue(json.get(), "requireFromPresent", defaults._requireFromPresent);
   config._restrictType            = JsonHelper::getStringValue(json.get(), "restrictType", defaults._restrictType);
-  config._connectionRetryWaitTime = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "connectionRetryWaitTime", static_cast<double>(defaults._connectionRetryWaitTime) / (1000.0 * 1000.0)));
-  config._initialSyncMaxWaitTime  = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "initialSyncMaxWaitTime", static_cast<double>(defaults._initialSyncMaxWaitTime) / (1000.0 * 1000.0)));
-  config._idleMinWaitTime         = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "idleMinWaitTime", static_cast<double>(defaults._idleMinWaitTime) / (1000.0 * 1000.0)));
-  config._idleMaxWaitTime         = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "idleMaxWaitTime", static_cast<double>(defaults._idleMaxWaitTime) / (1000.0 * 1000.0)));
-  
+  config._connectionRetryWaitTime = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "connectionRetryWaitTime", static_cast<double>(defaults._connectionRetryWaitTime) / (1000.0 * 1000.0)));
+  config._initialSyncMaxWaitTime  = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "initialSyncMaxWaitTime", static_cast<double>(defaults._initialSyncMaxWaitTime) / (1000.0 * 1000.0)));
+  config._idleMinWaitTime         = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "idleMinWaitTime", static_cast<double>(defaults._idleMinWaitTime) / (1000.0 * 1000.0)));
+  config._idleMaxWaitTime         = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "idleMaxWaitTime", static_cast<double>(defaults._idleMaxWaitTime) / (1000.0 * 1000.0)));
+  config._autoResyncRetries       = static_cast<uint64_t>(JsonHelper::getNumericValue<uint64_t>(json.get(), "autoResyncRetries", defaults._autoResyncRetries));
+
   TRI_json_t* restriction = JsonHelper::getObjectElement(json.get(), "restrictCollections");
 
   if (TRI_IsArrayJson(restriction)) {
@@ -4353,6 +4357,12 @@ void RestReplicationHandler::handleCommandServerId () {
 ///   requested by the slave, or when the replication is started and no tick value
 ///   can be found.
 ///
+/// - *autoResyncRetries*: number of resynchronization retries that will be performed 
+///   in a row when automatic resynchronization is enabled and kicks in. Setting this 
+///   to *0* will effectively disable *autoResync*. Setting it to some other value 
+///   will limit the number of retries that are performed. This helps preventing endless 
+///   retries in case resynchronizations always fail.
+///
 /// - *initialSyncMaxWaitTime*: the maximum wait time (in seconds) that the initial 
 ///   synchronization will wait for a response from the master when fetching initial 
 ///   collection data.
@@ -4507,6 +4517,13 @@ void RestReplicationHandler::handleCommandApplierGetConfig () {
 /// with the master in case the master cannot serve log data requested by the slave,
 /// or when the replication is started and no tick value can be found.
 ///
+/// @RESTBODYPARAM{autoResyncRetries,integer,optional,int64}
+/// number of resynchronization retries that will be performed in a row when
+/// automatic resynchronization is enabled and kicks in. Setting this to *0* will
+/// effectively disable *autoResync*. Setting it to some other value will limit
+/// the number of retries that are performed. This helps preventing endless retries
+/// in case resynchronizations always fail.
+///
 /// @RESTBODYPARAM{initialSyncMaxWaitTime,integer,optional,int64}
 /// the maximum wait time (in seconds) that the initial synchronization will
 /// wait for a response from the master when fetching initial collection data.
@@ -4588,7 +4605,7 @@ void RestReplicationHandler::handleCommandApplierGetConfig () {
 /// @EXAMPLES
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationApplierSetConfig}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     re.applier.shutdown();
 ///
 ///     var url = "/_api/replication/applier-config";
@@ -4679,11 +4696,12 @@ void RestReplicationHandler::handleCommandApplierSetConfig () {
   config._verbose                 = JsonHelper::getBooleanValue(json.get(), "verbose", config._verbose);
   config._requireFromPresent      = JsonHelper::getBooleanValue(json.get(), "requireFromPresent", config._requireFromPresent);
   config._restrictType            = JsonHelper::getStringValue(json.get(), "restrictType", config._restrictType);
-  config._connectionRetryWaitTime = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "connectionRetryWaitTime", static_cast<double>(config._connectionRetryWaitTime) / (1000.0 * 1000.0)));
-  config._initialSyncMaxWaitTime  = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "initialSyncMaxWaitTime", static_cast<double>(config._initialSyncMaxWaitTime) / (1000.0 * 1000.0)));
-  config._idleMinWaitTime         = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "idleMinWaitTime", static_cast<double>(config._idleMinWaitTime) / (1000.0 * 1000.0)));
-  config._idleMaxWaitTime         = static_cast<uint64_t>(JsonHelper::getNumericValue<double>(json.get(), "idleMaxWaitTime", static_cast<double>(config._idleMaxWaitTime) / (1000.0 * 1000.0)));
-
+  config._connectionRetryWaitTime = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "connectionRetryWaitTime", static_cast<double>(config._connectionRetryWaitTime) / (1000.0 * 1000.0)));
+  config._initialSyncMaxWaitTime  = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "initialSyncMaxWaitTime", static_cast<double>(config._initialSyncMaxWaitTime) / (1000.0 * 1000.0)));
+  config._idleMinWaitTime         = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "idleMinWaitTime", static_cast<double>(config._idleMinWaitTime) / (1000.0 * 1000.0)));
+  config._idleMaxWaitTime         = static_cast<uint64_t>(1000.0 * 1000.0 * JsonHelper::getNumericValue<double>(json.get(), "idleMaxWaitTime", static_cast<double>(config._idleMaxWaitTime) / (1000.0 * 1000.0)));
+  config._autoResyncRetries       = static_cast<uint64_t>(JsonHelper::getNumericValue<uint64_t>(json.get(), "autoResyncRetries", config._autoResyncRetries));
+  
   value = JsonHelper::getObjectElement(json.get(), "restrictCollections");
 
   if (TRI_IsArrayJson(value)) {
@@ -4755,7 +4773,7 @@ void RestReplicationHandler::handleCommandApplierSetConfig () {
 /// @EXAMPLES
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationApplierStart}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     re.applier.shutdown();
 ///     re.applier.properties({
 ///       endpoint: "tcp://127.0.0.1:8529",
@@ -4827,7 +4845,7 @@ void RestReplicationHandler::handleCommandApplierStart () {
 /// @EXAMPLES
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationApplierStop}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     re.applier.shutdown();
 ///     re.applier.properties({
 ///       endpoint: "tcp://127.0.0.1:8529",
@@ -4954,7 +4972,7 @@ void RestReplicationHandler::handleCommandApplierStop () {
 /// Fetching the state of an inactive applier:
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationApplierStateNotRunning}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     re.applier.shutdown();
 ///
 ///     var url = "/_api/replication/applier-state";
@@ -4967,7 +4985,7 @@ void RestReplicationHandler::handleCommandApplierStop () {
 /// Fetching the state of an active applier:
 ///
 /// @EXAMPLE_ARANGOSH_RUN{RestReplicationApplierStateRunning}
-///     var re = require("org/arangodb/replication");
+///     var re = require("@arangodb/replication");
 ///     re.applier.shutdown();
 ///     re.applier.start();
 ///

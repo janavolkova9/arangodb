@@ -698,7 +698,7 @@ void TRI_RunNeighborsSearch (
 
 Json* SingleServerTraversalPath::pathToJson (Transaction* trx,
                                              CollectionNameResolver* resolver) {
-  std::unique_ptr<Json> path(new Json(Json::Object, 2));
+  auto path = std::make_unique<Json>(Json::Object, 2);
   Json vertices(Json::Array);
   for (size_t i = 0; i < _path.vertices.size(); ++i) {
     auto v = vertexToJson(trx, resolver, _path.vertices[i]);
@@ -775,6 +775,11 @@ Json* SingleServerTraversalPath::vertexToJson (Transaction* trx,
     if (collection == nullptr) {
       THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_INTERNAL, "collection is a nullptr");
     }
+            
+    auto trxCollection = trx->trxCollection(v.cid);
+    if (trxCollection != nullptr) {
+      trx->orderDitch(trxCollection);
+    }
   }
   TRI_doc_mptr_copy_t mptr;
   int res = trx->readSingle(collection, &mptr, v.key);
@@ -849,6 +854,10 @@ bool DepthFirstTraverser::vertexMatchesConditions (VertexId const& v, size_t dep
 
             if (collection == nullptr) {
               THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_INTERNAL, "collection is a nullptr");
+            }
+            auto trxCollection = _trx->trxCollection(v.cid);
+            if (trxCollection != nullptr) {
+              _trx->orderDitch(trxCollection);
             }
           }
 
@@ -967,6 +976,13 @@ void DepthFirstTraverser::_defInternalFunctions () {
           _getEdge(startVertex, edges, last, eColIdx, dir);
           return;
         }
+        auto search = std::find(edges.begin(), edges.end(), e);
+        if (search != edges.end()) {
+          // edges.push_back(e);
+          // The edge is now included twice. Go on with the next
+          _getEdge(startVertex, edges, last, eColIdx, dir);
+          return;
+        }
         edges.push_back(e);
       }
     };
@@ -1009,6 +1025,13 @@ void DepthFirstTraverser::_defInternalFunctions () {
           _getEdge(startVertex, edges, last, eColIdx, dir);
           return;
         }
+        auto search = std::find(edges.begin(), edges.end(), e);
+        if (search != edges.end()) {
+          // edges.push_back(e);
+          // The edge is now included twice. Go on with the next
+          _getEdge(startVertex, edges, last, eColIdx, dir);
+          return;
+        }
         edges.push_back(e);
       }
     };
@@ -1042,6 +1065,10 @@ void DepthFirstTraverser::setStartVertex (triagens::arango::traverser::VertexId 
 
               if (collection == nullptr) {
                 THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_INTERNAL, "collection is a nullptr");
+              }
+              auto trxCollection = _trx->trxCollection(v.cid);
+              if (trxCollection != nullptr) {
+                _trx->orderDitch(trxCollection);
               }
             }
 
@@ -1081,7 +1108,9 @@ TraversalPath* DepthFirstTraverser::next () {
     // Done traversing
     return nullptr;
   }
-  std::unique_ptr<SingleServerTraversalPath> p(new SingleServerTraversalPath(path));
+
+  auto p = std::make_unique<SingleServerTraversalPath>(path);
+
   if (_opts.shouldPrunePath(p.get())) {
     _enumerator->prune();
     return next();

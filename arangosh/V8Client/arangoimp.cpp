@@ -113,6 +113,12 @@ static string TypeImport = "json";
 static bool CreateCollection = false;
 
 ////////////////////////////////////////////////////////////////////////////////
+/// @brief collection type if collection is to be created
+////////////////////////////////////////////////////////////////////////////////
+
+static string CreateCollectionType = "document";
+
+////////////////////////////////////////////////////////////////////////////////
 /// @brief whether or not to overwrite existing data in a collection
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -153,6 +159,7 @@ static void ParseProgramOptions (int argc, char* argv[]) {
     ("batch-size", &ChunkSize, "size for individual data batches (in bytes)")
     ("collection", &CollectionName, "collection name")
     ("create-collection", &CreateCollection, "create collection if it does not yet exist")
+    ("create-collection-type", &CreateCollectionType, "type of collection if collection is created ('document' or 'edge')")
     ("type", &TypeImport, "type of file (\"csv\", \"tsv\", or \"json\")")
     ("overwrite", &Overwrite, "overwrite collection if it exist (WARNING: this will remove any data from the collection)")
     ("quote", &Quote, "quote character(s), used for csv")
@@ -321,7 +328,8 @@ int main (int argc, char* argv[]) {
       
       client.setLocationRewriter(nullptr, &RewriteLocation);
       client.setUserNamePassword("/", BaseClient.username(), BaseClient.password());
-
+  
+      // must stay here in order to establish the connection
       std::string const versionString = client.getServerVersion();
 
       if (! connection->isConnected()) {
@@ -357,6 +365,10 @@ int main (int argc, char* argv[]) {
       // create colletion
       if (CreateCollection) {
         ih.setCreateCollection(true);
+      }
+
+      if (CreateCollectionType == "document" || CreateCollectionType == "edge") {
+        ih.setCreateCollectionType(CreateCollectionType);
       }
 
       ih.setOverwrite(Overwrite);
@@ -456,7 +468,7 @@ int main (int argc, char* argv[]) {
           cout << "updated/replaced: " << ih.getNumberUpdated() << endl;
           cout << "ignored:          " << ih.getNumberIgnored() << endl;
 
-          if (TypeImport == "csv" || TypeImport == "csv") {
+          if (TypeImport == "csv" || TypeImport == "tsv") {
             cout << "lines read:       " << ih.getReadLines() << endl;
           }
 
@@ -474,7 +486,6 @@ int main (int argc, char* argv[]) {
     }
 
   }
-
 
   TRIAGENS_REST_SHUTDOWN;
 

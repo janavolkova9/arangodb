@@ -1,7 +1,5 @@
 /// @brief Infrastructure for ExecutionPlans
 ///
-/// @file arangod/Aql/ExecutionNode.cpp
-///
 /// DISCLAIMER
 ///
 /// Copyright 2010-2014 triagens GmbH, Cologne, Germany
@@ -30,10 +28,10 @@
 #include "Aql/ClusterNodes.h"
 #include "Aql/Collection.h"
 #include "Aql/ExecutionPlan.h"
-#include "Aql/TraversalNode.h"
 #include "Aql/IndexNode.h"
 #include "Aql/ModificationNodes.h"
 #include "Aql/SortNode.h"
+#include "Aql/TraversalNode.h"
 #include "Aql/WalkerWorker.h"
 #include "Basics/StringBuffer.h"
 
@@ -340,7 +338,7 @@ ExecutionNode::ExecutionNode (ExecutionPlan* plan,
   len = jsonvarsUsedLater.size();
   _varsUsedLater.reserve(len);
   for (size_t i = 0; i < len; i++) {
-    std::unique_ptr<Variable> oneVarUsedLater(new Variable(jsonvarsUsedLater.at(i)));
+    auto oneVarUsedLater = std::make_unique<Variable>(jsonvarsUsedLater.at(i));
     Variable* oneVariable = allVars->getVariable(oneVarUsedLater->id);
 
     if (oneVariable == nullptr) {
@@ -359,7 +357,7 @@ ExecutionNode::ExecutionNode (ExecutionPlan* plan,
   len = jsonvarsValidList.size();
   _varsValid.reserve(len);
   for (size_t i = 0; i < len; i++) {
-    std::unique_ptr<Variable> oneVarValid(new Variable(jsonvarsValidList.at(i)));
+    auto oneVarValid = std::make_unique<Variable>(jsonvarsValidList.at(i));
     Variable* oneVariable = allVars->getVariable(oneVarValid->id);
 
     if (oneVariable == nullptr) {
@@ -486,6 +484,25 @@ void ExecutionNode::appendAsString (std::string& st, int indent) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// @brief invalidate the cost estimation for the node and its dependencies
+////////////////////////////////////////////////////////////////////////////////
+  
+void ExecutionNode::invalidateCost () {
+  _estimatedCostSet = false;
+  
+  for (auto& dep : _dependencies) {
+    dep->invalidateCost();
+
+    // no need to virtualize this function too, as getType(), estimateCost() etc.
+    // are already virtual
+    if (dep->getType() == SUBQUERY) {
+      // invalid cost of subqueries, too 
+      static_cast<SubqueryNode*>(dep)->getSubquery()->invalidateCost();
+    } 
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// @brief functionality to walk an execution plan recursively
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -531,14 +548,14 @@ bool ExecutionNode::walk (WalkerWorker<ExecutionNode>* worker) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief whether or not the node is in an inner loop
+/// @brief get the surrounding loop
 ////////////////////////////////////////////////////////////////////////////////
 
-bool ExecutionNode::isInInnerLoop () const {
+ExecutionNode const* ExecutionNode::getLoop () const {
   auto node = this;
   while (node != nullptr) {
     if (! node->hasDependency()) {
-      return false;
+      return nullptr;
     }
 
     node = node->getFirstDependency();
@@ -550,15 +567,11 @@ bool ExecutionNode::isInInnerLoop () const {
         type == INDEX ||
         type == TRAVERSAL ||
         type == ENUMERATE_LIST) {
-      // we are contained in an outer loop
-      return true;
-
-      // future potential optimization: check if the outer loop has 0 or 1 
-      // iterations. in this case it is still possible to remove the sort
+      return node;
     }
   }
 
-  return false;
+  return nullptr;
 }
 
 // -----------------------------------------------------------------------------
@@ -742,7 +755,7 @@ struct RegisterPlanningDebugger final : public WalkerWorker<ExecutionNode> {
 
 void ExecutionNode::planRegisters (ExecutionNode* super) {
   // The super is only for the case of subqueries.
-  shared_ptr<RegisterPlan> v;
+  std::shared_ptr<RegisterPlan> v;
 
   if (super == nullptr) {
     v.reset(new RegisterPlan());
@@ -803,7 +816,7 @@ void ExecutionNode::RegisterPlan::clear () {
 }
 
 ExecutionNode::RegisterPlan* ExecutionNode::RegisterPlan::clone (ExecutionPlan* otherPlan, ExecutionPlan* plan) {
-  std::unique_ptr<RegisterPlan> other(new RegisterPlan());
+  auto other = std::make_unique<RegisterPlan>();
 
   other->nrRegsHere  = nrRegsHere;
   other->nrRegs      = nrRegs;
@@ -1336,12 +1349,13 @@ void LimitNode::toJsonHelper (triagens::basics::Json& nodes,
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief estimateCost
 ////////////////////////////////////////////////////////////////////////////////
-        
+       
 double LimitNode::estimateCost (size_t& nrItems) const {
   size_t incoming = 0;
   double depCost = _dependencies.at(0)->getCost(incoming);
   nrItems = (std::min)(_limit, (std::max)(static_cast<size_t>(0), 
                                           incoming - _offset));
+
   return depCost + nrItems;
 }
 
@@ -1354,7 +1368,8 @@ CalculationNode::CalculationNode (ExecutionPlan* plan,
   : ExecutionNode(plan, base),
     _conditionVariable(varFromJson(plan->getAst(), base, "conditionVariable", true)),
     _outVariable(varFromJson(plan->getAst(), base, "outVariable")),
-    _expression(new Expression(plan->getAst(), base)) {
+    _expression(new Expression(plan->getAst(), base)),
+    _canRemoveIfThrows(false) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1398,6 +1413,7 @@ ExecutionNode* CalculationNode::clone (ExecutionPlan* plan,
   }
 
   auto c = new CalculationNode(plan, _id, _expression->clone(), conditionVariable, outVariable);
+  c->_canRemoveIfThrows = _canRemoveIfThrows;
 
   cloneHelper(c, plan, withDependencies, withProperties);
 

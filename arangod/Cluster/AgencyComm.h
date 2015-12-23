@@ -35,6 +35,7 @@
 #include "Basics/ReadWriteLock.h"
 #include "Basics/json.h"
 #include "Rest/HttpRequest.h"
+#include "velocypack/Slice.h"
 
 namespace triagens {
   namespace httpclient {
@@ -470,6 +471,14 @@ namespace triagens {
                                    double);
 
 ////////////////////////////////////////////////////////////////////////////////
+/// @brief sets a value in the back end, velocypack variant
+////////////////////////////////////////////////////////////////////////////////
+
+        AgencyCommResult setValue (std::string const&,
+                                   arangodb::velocypack::Slice const,
+                                   double);
+
+////////////////////////////////////////////////////////////////////////////////
 /// @brief checks whether a key exists
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -496,6 +505,18 @@ namespace triagens {
 
         AgencyCommResult casValue (std::string const&,
                                    TRI_json_t const*,
+                                   bool,
+                                   double,
+                                   double);
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief compares and swaps a single value in the backend
+/// the CAS condition is whether or not a previous value existed for the key
+/// velocypack variant
+////////////////////////////////////////////////////////////////////////////////
+
+        AgencyCommResult casValue (std::string const&,
+                                   arangodb::velocypack::Slice const,
                                    bool,
                                    double,
                                    double);

@@ -1339,7 +1339,6 @@ static void JS_ExecuteAqlJson (const v8::FunctionCallbackInfo<v8::Value>& args) 
 
 static void JS_ExecuteAql (const v8::FunctionCallbackInfo<v8::Value>& args) {
   TRI_V8_TRY_CATCH_BEGIN(isolate);
-
   v8::HandleScope scope(isolate);
 
   TRI_vocbase_t* vocbase = GetContextVocBase(isolate);
@@ -1918,14 +1917,14 @@ static ExplicitTransaction* BeginTransaction (TRI_vocbase_t* vocbase,
   bool waitForSync = false;
 
   // Start Transaction to collect all parts of the path
-  std::unique_ptr<ExplicitTransaction> trx(new ExplicitTransaction(
+  auto trx = std::make_unique<ExplicitTransaction>(
     vocbase,
     readCollections,
     writeCollections,
     lockTimeout,
     waitForSync,
     embed
-  ));
+  );
   
   int res = trx->begin();
 
@@ -2912,7 +2911,7 @@ static void MapGetVocBase (v8::Local<v8::String> const name,
   }
 
   if (ServerState::instance()->isCoordinator()) {
-    shared_ptr<CollectionInfo> const& ci
+    shared_ptr<CollectionInfo> const ci
         = ClusterInfo::instance()->getCollection(vocbase->_name, std::string(key));
 
     if ((*ci).empty()) {
@@ -3195,18 +3194,18 @@ static void ListDatabasesCoordinator (const v8::FunctionCallbackInfo<v8::Value>&
       if (! DBServers.empty()) {
         ServerID sid = DBServers[0];
         ClusterComm* cc = ClusterComm::instance();
-        map<string, string> headers;
+
+        std::map<std::string, std::string> headers;
         headers["Authentication"] = TRI_ObjectToString(args[2]);
-        ClusterCommResult* res = cc->syncRequest("", 0, "server:" + sid,
-                              triagens::rest::HttpRequest::HTTP_REQUEST_GET,
-                              "/_api/database/user", string(""), headers, 0.0);
+        auto res = cc->syncRequest("", 0, "server:" + sid,
+                      triagens::rest::HttpRequest::HTTP_REQUEST_GET,
+                      "/_api/database/user", string(""), headers, 0.0);
 
         if (res->status == CL_COMM_SENT) {
           // We got an array back as JSON, let's parse it and build a v8
           StringBuffer& body = res->result->getBody();
 
           TRI_json_t* json = JsonHelper::fromString(body.c_str());
-          delete res;
 
           if (json != 0 && JsonHelper::isObject(json)) {
             TRI_json_t const* dotresult = JsonHelper::getObjectElement(json, "result");
@@ -3222,9 +3221,6 @@ static void ListDatabasesCoordinator (const v8::FunctionCallbackInfo<v8::Value>&
             }
             TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
           }
-        }
-        else {
-          delete res;
         }
       }
       if (++tries >= 2) {
@@ -3455,9 +3451,9 @@ static void CreateDatabaseCoordinator (const v8::FunctionCallbackInfo<v8::Value>
 /// session) and add or modify users with the following commands.
 ///
 /// ```js
-///   require("org/arangodb/users").save(username, password, true);
-///   require("org/arangodb/users").update(username, password, true);
-///   require("org/arangodb/users").remove(username);
+///   require("@arangodb/users").save(username, password, true);
+///   require("@arangodb/users").update(username, password, true);
+///   require("@arangodb/users").remove(username);
 /// ```
 /// Alternatively, you can specify user data directly. For example:
 ///

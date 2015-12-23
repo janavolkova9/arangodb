@@ -684,7 +684,6 @@ static int ProcessInputDirectory (std::string& errorMsg) {
       TRI_json_t const* parameters = JsonHelper::getObjectElement(json, "parameters");
       TRI_json_t const* indexes = JsonHelper::getObjectElement(json, "indexes");
       std::string const cname = JsonHelper::getStringValue(parameters, "name", "");
-      std::string const cid   = JsonHelper::getStringValue(parameters, "cid", "");
           
       int type = JsonHelper::getNumericValue<int>(parameters, "type", 2);
       std::string const collectionType(type == 2 ? "document" : "edge");
@@ -730,7 +729,7 @@ static int ProcessInputDirectory (std::string& errorMsg) {
             cout << "# Loading data into " << collectionType << " collection '" << cname << "'..." << endl;
           }
 
-          int fd = TRI_OPEN(datafile.c_str(), O_RDONLY);
+          int fd = TRI_OPEN(datafile.c_str(), O_RDONLY | TRI_O_CLOEXEC);
 
           if (fd < 0) {
             errorMsg = "cannot open collection data file '" + datafile + "'";

@@ -151,6 +151,7 @@ namespace triagens {
       _maxUploadSize(maxUploadSize),
       _separator(","),
       _quote("\""),
+      _createCollectionType("document"),
       _useBackslash(false),
       _createCollection(false),
       _overwrite(false),
@@ -161,6 +162,8 @@ namespace triagens {
       _numberErrors(0),
       _numberUpdated(0),
       _numberIgnored(0),
+      _rowsRead(0),
+      _rowOffset(0),
       _onDuplicateAction("error"),
       _collectionName(),
       _lineBuffer(TRI_UNKNOWN_MEM_ZONE),
@@ -198,7 +201,7 @@ namespace triagens {
       else {
         // read filesize
         totalLength = TRI_SizeFile(fileName.c_str());
-        fd = TRI_OPEN(fileName.c_str(), O_RDONLY);
+        fd = TRI_OPEN(fileName.c_str(), O_RDONLY | TRI_O_CLOEXEC);
 
         if (fd < 0) {
           _errorMessage = TRI_LAST_ERROR_STR;
@@ -304,7 +307,7 @@ namespace triagens {
       else {
         // read filesize
         totalLength = TRI_SizeFile(fileName.c_str());
-        fd = TRI_OPEN(fileName.c_str(), O_RDONLY);
+        fd = TRI_OPEN(fileName.c_str(), O_RDONLY | TRI_O_CLOEXEC);
 
         if (fd < 0) {
           _errorMessage = TRI_LAST_ERROR_STR;
@@ -446,6 +449,10 @@ namespace triagens {
       if (_firstChunk) {
         if (_createCollection) {
           part += "&createCollection=yes";
+        }
+
+        if (! _createCollectionType.empty()) {
+          part += "&createCollectionType=" + _createCollectionType;
         }
 
         if (_overwrite) {

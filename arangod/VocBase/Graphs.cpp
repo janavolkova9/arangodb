@@ -46,12 +46,13 @@ const std::string graphs = "_graphs";
 /// @brief Load a graph from the _graphs collection; local and coordinator way
 ////////////////////////////////////////////////////////////////////////////////
 
-triagens::aql::Graph* triagens::arango::lookupGraphByName (TRI_vocbase_t* vocbase, std::string name) {
-  triagens::aql::Graph *g = nullptr;
+triagens::aql::Graph* triagens::arango::lookupGraphByName (TRI_vocbase_t* vocbase, std::string const& name) {
+  triagens::aql::Graph* g = nullptr;
 
   if (ServerState::instance()->isCoordinator()) {
     triagens::rest::HttpResponse::HttpResponseCode responseCode;
-    std::map<std::string, std::string> headers;
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
     std::map<std::string, std::string> resultHeaders;
     std::string resultBody;
 

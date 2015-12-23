@@ -29,11 +29,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 var jsunity = require("jsunity");
-var db = require("org/arangodb").db;
+var db = require("@arangodb").db;
 var internal = require("internal");
 var errors = internal.errors;
-var helper = require("org/arangodb/aql-helper");
-var cluster = require("org/arangodb/cluster");
+var helper = require("@arangodb/aql-helper");
+var cluster = require("@arangodb/cluster");
 var getQueryResults = helper.getQueryResults;
 var getRawQueryResults = helper.getRawQueryResults;
 var assertQueryError = helper.assertQueryError;
@@ -97,9 +97,12 @@ function ahuacatlQueryEdgesTestSuite () {
 
     testEdgesAny : function () {
       var queries = [
+        "FOR e IN EDGES('UnitTestsAhuacatlEdge', @start, 'any') SORT e.what RETURN e.what",
         "FOR e IN EDGES(UnitTestsAhuacatlEdge, @start, 'any') SORT e.what RETURN e.what",
         "FOR e IN NOOPT(EDGES(UnitTestsAhuacatlEdge, @start, 'any')) SORT e.what RETURN e.what",
-        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'any'))) SORT e.what RETURN e.what"
+        "FOR e IN NOOPT(EDGES('UnitTestsAhuacatlEdge', @start, 'any')) SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'any'))) SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(V8(EDGES('UnitTestsAhuacatlEdge', @start, 'any'))) SORT e.what RETURN e.what"
       ];
      
       queries.forEach(function (q) {
@@ -130,8 +133,11 @@ function ahuacatlQueryEdgesTestSuite () {
     testEdgesIn : function () {
       var queries = [
         "FOR e IN EDGES(UnitTestsAhuacatlEdge, @start, 'inbound') SORT e.what RETURN e.what",
+        "FOR e IN EDGES('UnitTestsAhuacatlEdge', @start, 'inbound') SORT e.what RETURN e.what",
         "FOR e IN NOOPT(EDGES(UnitTestsAhuacatlEdge, @start, 'inbound')) SORT e.what RETURN e.what",
-        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'inbound'))) SORT e.what RETURN e.what"
+        "FOR e IN NOOPT(EDGES('UnitTestsAhuacatlEdge', @start, 'inbound')) SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'inbound'))) SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(V8(EDGES('UnitTestsAhuacatlEdge', @start, 'inbound'))) SORT e.what RETURN e.what"
       ];
      
       queries.forEach(function (q) {
@@ -162,8 +168,11 @@ function ahuacatlQueryEdgesTestSuite () {
     testEdgesOut : function () {
       var queries = [
         "FOR e IN EDGES(UnitTestsAhuacatlEdge, @start, 'outbound') SORT e.what RETURN e.what",
+        "FOR e IN EDGES('UnitTestsAhuacatlEdge', @start, 'outbound') SORT e.what RETURN e.what",
         "FOR e IN NOOPT(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound')) SORT e.what RETURN e.what",
-        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound'))) SORT e.what RETURN e.what"
+        "FOR e IN NOOPT(EDGES('UnitTestsAhuacatlEdge', @start, 'outbound')) SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound'))) SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(V8(EDGES('UnitTestsAhuacatlEdge', @start, 'outbound'))) SORT e.what RETURN e.what"
       ];
      
       queries.forEach(function (q) {
@@ -361,8 +370,86 @@ function ahuacatlQueryEdgesTestSuite () {
         actual = getQueryResults(q, {start: "UnitTestsAhuacatlVertex/v3", examples: ["UnitTestsAhuacatlEdge/v1v3", {what: "v3->v6" } ] });
         assertEqual(actual, [ "v3->v6" ]);
       });
-    }
+    },
 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief checks EDGES()
+////////////////////////////////////////////////////////////////////////////////
+
+    testEdgesStartVertexArray : function () {
+      var queries = [
+        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound'))) SORT e.what RETURN e.what",
+        "FOR e IN EDGES(UnitTestsAhuacatlEdge, @start, 'outbound') SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound')) SORT e.what RETURN e.what"
+      ];
+     
+      queries.forEach(function (q) {
+        var actual;
+        actual = getQueryResults(q, {start: [ "UnitTestsAhuacatlVertex/v1", "UnitTestsAhuacatlVertex/v2" ]});
+        assertEqual(actual, [ "v1->v2", "v1->v3", "v2->v3" ]);
+
+        actual = getQueryResults(q, {start: [ {_id: "UnitTestsAhuacatlVertex/v1"}, {_id: "UnitTestsAhuacatlVertex/v2"} ]});
+        assertEqual(actual, [ "v1->v2", "v1->v3", "v2->v3" ]);
+      });
+    },
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief checks EDGES()
+////////////////////////////////////////////////////////////////////////////////
+
+    testEdgesStartVertexObject : function () {
+      var queries = [
+        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound'))) SORT e.what RETURN e.what",
+        "FOR e IN EDGES(UnitTestsAhuacatlEdge, @start, 'outbound') SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound')) SORT e.what RETURN e.what"
+      ];
+     
+      queries.forEach(function (q) {
+        var actual;
+        actual = getQueryResults(q, {start: { _id: "UnitTestsAhuacatlVertex/v1" }});
+        assertEqual(actual, [ "v1->v2", "v1->v3" ]);
+      });
+    },
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief checks EDGES()
+////////////////////////////////////////////////////////////////////////////////
+
+    testEdgesStartVertexIllegal : function () {
+      var queries = [
+        "FOR e IN NOOPT(V8(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound'))) SORT e.what RETURN e.what",
+        "FOR e IN EDGES(UnitTestsAhuacatlEdge, @start, 'outbound') SORT e.what RETURN e.what",
+        "FOR e IN NOOPT(EDGES(UnitTestsAhuacatlEdge, @start, 'outbound')) SORT e.what RETURN e.what"
+      ];
+     
+      queries.forEach(function (q) {
+        var actual;
+
+        var bindVars = {start: {_id: "v1"}}; // No collection
+        assertQueryError(errors.ERROR_ARANGO_DOCUMENT_HANDLE_BAD.code, q, bindVars);
+
+        bindVars = {start: "UnitTestTheFuxx/v1"}; // Non existing collection
+        assertQueryError(errors.ERROR_ARANGO_COLLECTION_NOT_FOUND.code, q, bindVars);
+
+        bindVars = {start: { id: "UnitTestTheFuxx/v1" } }; // No _id attribute
+        assertQueryError(errors.ERROR_ARANGO_DOCUMENT_HANDLE_BAD.code, q, bindVars);
+
+        bindVars = {start: [{ id: "UnitTestTheFuxx/v1" }] }; // Error in Array
+        actual = getQueryResults(q, bindVars);
+        // No Error thrown here
+        assertEqual(actual, [ ]);
+
+        bindVars = {start: ["UnitTestTheFuxx/v1"] }; // Error in Array
+        actual = getQueryResults(q, bindVars);
+        // No Error thrown here
+        assertEqual(actual, [ ]);
+
+        bindVars = {start: ["v1"] }; // Error in Array
+        actual = getQueryResults(q, bindVars);
+        // No Error thrown here
+        assertEqual(actual, [ ]);
+      });
+    }
   };
 }
 
@@ -1036,7 +1123,7 @@ function ahuacatlQueryShortestPathTestSuite () {
   var vertexCollection;
   var edgeCollection;
 
-  var aqlfunctions = require("org/arangodb/aql/functions");
+  var aqlfunctions = require("@arangodb/aql/functions");
 
   return {
 
@@ -1314,7 +1401,7 @@ function ahuacatlQueryTraversalFilterTestSuite () {
   var vertexCollection;
   var edgeCollection;
       
-  var aqlfunctions = require("org/arangodb/aql/functions");
+  var aqlfunctions = require("@arangodb/aql/functions");
 
   return {
 

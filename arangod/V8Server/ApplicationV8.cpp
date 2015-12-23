@@ -81,14 +81,21 @@ using namespace std;
 ////////////////////////////////////////////////////////////////////////////////
 
 char const* GlobalContextMethods::CodeReloadRouting 
-  = "require(\"org/arangodb/actions\").reloadRouting()";
+  = "require(\"@arangodb/actions\").reloadRouting();"; 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief reload AQL functions
 ////////////////////////////////////////////////////////////////////////////////
 
 char const* GlobalContextMethods::CodeReloadAql
-  = "try { require(\"org/arangodb/aql\").reload(); } catch (err) { }";
+  = "try { require(\"@arangodb/aql\").reload(); } catch (err) { }";
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief collect garbage
+////////////////////////////////////////////////////////////////////////////////
+
+char const* GlobalContextMethods::CodeCollectGarbage
+  = "require(\"internal\").wait(0.01, true);";
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief bootstrap coordinator
@@ -103,7 +110,7 @@ char const* GlobalContextMethods::CodeBootstrapCoordinator
 ////////////////////////////////////////////////////////////////////////////////
 
 char const* GlobalContextMethods::CodeWarmupExports 
-  = "require(\"org/arangodb/actions\").warmupExports()";
+  = "require(\"@arangodb/actions\").warmupExports()";
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief we'll store deprecated config option values in here
@@ -176,7 +183,7 @@ namespace {
 /// @brief adds a global method
 ////////////////////////////////////////////////////////////////////////////////
 
-bool ApplicationV8::V8Context::addGlobalContextMethod (string const& method) {
+bool ApplicationV8::V8Context::addGlobalContextMethod (std::string const& method) {
   GlobalContextMethods::MethodType type = GlobalContextMethods::getType(method);
 
   if (type == GlobalContextMethods::TYPE_UNKNOWN) {
@@ -185,8 +192,8 @@ bool ApplicationV8::V8Context::addGlobalContextMethod (string const& method) {
 
   MUTEX_LOCKER(_globalMethodsLock);
 
-  for (size_t i = 0; i < _globalMethods.size(); ++i) {
-    if (_globalMethods[i] == type) {
+  for (auto& it : _globalMethods) {
+    if (it == type) {
       // action is already registered. no need to register it again
       return true;
     }
@@ -202,7 +209,7 @@ bool ApplicationV8::V8Context::addGlobalContextMethod (string const& method) {
 ////////////////////////////////////////////////////////////////////////////////
 
 void ApplicationV8::V8Context::handleGlobalContextMethods () {
-  vector<GlobalContextMethods::MethodType> copy;
+  std::vector<GlobalContextMethods::MethodType> copy;
 
   try {
     // we need to copy the vector of functions so we do not need to hold the
@@ -211,8 +218,7 @@ void ApplicationV8::V8Context::handleGlobalContextMethods () {
     // registers a context method
 
     MUTEX_LOCKER(_globalMethodsLock);
-    copy = _globalMethods;
-    _globalMethods.clear();
+    copy.swap(_globalMethods);
   }
   catch (...) {
     // if we failed, we shouldn't have modified _globalMethods yet, so we can
@@ -225,7 +231,7 @@ void ApplicationV8::V8Context::handleGlobalContextMethods () {
     // all functions are hard-coded, static const char*s
     TRI_ASSERT(func != nullptr);
 
-    LOG_DEBUG("executing global context methods '%s' for context %d", func, (int) _id);
+    LOG_DEBUG("executing global context method '%s' for context %d", func, (int) _id);
 
     TRI_GET_GLOBALS();
     bool allowUseDatabase = v8g->_allowUseDatabase;
@@ -290,7 +296,7 @@ ApplicationV8::ApplicationV8 (TRI_server_t* server,
     _useActions(true),
     _frontendVersionCheck(true),
     _gcInterval(1000),
-    _gcFrequency(10.0),
+    _gcFrequency(15.0),
     _v8Options(""),
     _startupLoader(),
     _vocbase(nullptr),
@@ -350,7 +356,7 @@ void ApplicationV8::setVocbase (TRI_vocbase_t* vocbase) {
 
 ApplicationV8::V8Context* ApplicationV8::enterContext (TRI_vocbase_t* vocbase,
                                                        bool allowUseDatabase,
-						       ssize_t forceContext) {
+                                                       ssize_t forceContext) {
   v8::Isolate* isolate = nullptr;
   V8Context* context   = nullptr;
 
@@ -360,33 +366,33 @@ ApplicationV8::V8Context* ApplicationV8::enterContext (TRI_vocbase_t* vocbase,
 
     while (! _stopping) {
       {
-	CONDITION_LOCKER(guard, _contextCondition);
+        CONDITION_LOCKER(guard, _contextCondition);
 
-	for (auto iter = _freeContexts.begin();  iter != _freeContexts.end();  ++iter) {
-	  if ((*iter)->_id == id) {
-	    context = *iter;
-	    _freeContexts.erase(iter);
-	    _busyContexts.emplace(context);
-	    break;
-	  }
-	}
+        for (auto iter = _freeContexts.begin();  iter != _freeContexts.end();  ++iter) {
+          if ((*iter)->_id == id) {
+            context = *iter;
+            _freeContexts.erase(iter);
+            _busyContexts.emplace(context);
+            break;
+          }
+        }
 
-	if (context != nullptr) {
-	  break;
-	}
+        if (context != nullptr) {
+          break;
+        }
 
-	for (auto iter = _dirtyContexts.begin();  iter != _dirtyContexts.end();  ++iter) {
-	  if ((*iter)->_id == id) {
-	    context = *iter;
-	    _dirtyContexts.erase(iter);
-	    _busyContexts.emplace(context);
-	    break;
-	  }
-	}
+        for (auto iter = _dirtyContexts.begin();  iter != _dirtyContexts.end();  ++iter) {
+          if ((*iter)->_id == id) {
+            context = *iter;
+            _dirtyContexts.erase(iter);
+            _busyContexts.emplace(context);
+            break;
+          }
+        }
 
-	if (context != nullptr) {
-	  break;
-	}
+        if (context != nullptr) {
+          break;
+        }
       }
 
       LOG_DEBUG("waiting for V8 context %d to become available", (int) id);
@@ -434,7 +440,7 @@ ApplicationV8::V8Context* ApplicationV8::enterContext (TRI_vocbase_t* vocbase,
 
     LOG_TRACE("found unused V8 context");
     TRI_ASSERT(! _freeContexts.empty());
-
+   
     context = _freeContexts.back();
     TRI_ASSERT(context != nullptr);
 
@@ -526,7 +532,7 @@ void ApplicationV8::exitContext (V8Context* context) {
     }
 
     // run global context methods
-    if (runGlobal) {      
+    if (runGlobal) {
       TRI_ASSERT(context->_locker->IsLocked(isolate));
       TRI_ASSERT(v8::Locker::IsLocked(isolate));
 
@@ -587,19 +593,19 @@ void ApplicationV8::exitContext (V8Context* context) {
 /// @brief adds a global context function to be executed asap
 ////////////////////////////////////////////////////////////////////////////////
 
-bool ApplicationV8::addGlobalContextMethod (string const& method) {
+bool ApplicationV8::addGlobalContextMethod (std::string const& method) {
   bool result = true;
   size_t nrInstances = _nrInstances;
 
-  try {
-    for (size_t i = 0; i < nrInstances; ++i) {
+  for (size_t i = 0; i < nrInstances; ++i) {
+    try {
       if (! _contexts[i]->addGlobalContextMethod(method)) {
         result = false;
       }
     }
-  }
-  catch (...) {
-    result = false;
+    catch (...) {
+      result = false;
+    }
   }
 
   return result;
@@ -619,6 +625,7 @@ void ApplicationV8::collectGarbage () {
   // to false again once all contexts have been cleaned up and there is nothing
   // more to do
   volatile bool useReducedWait = false;
+  bool preferFree = false;
 
   // the time we'll wait for a signal
   uint64_t const regularWaitTime = (uint64_t) (_gcFrequency * 1000.0 * 1000.0);
@@ -628,9 +635,11 @@ void ApplicationV8::collectGarbage () {
 
   while (_stopping == 0) {
     V8Context* context = nullptr;
+    bool wasDirty = false;
 
     {
       bool gotSignal = false;
+      preferFree = ! preferFree;
       CONDITION_LOCKER(guard, _contextCondition);
 
       if (_dirtyContexts.empty()) {
@@ -643,26 +652,39 @@ void ApplicationV8::collectGarbage () {
         // the reduced wait time will allow to perfom GC for more contexts
         useReducedWait = ! gotSignal;
       }
+      
+      if (preferFree && ! _freeContexts.empty()) {
+        context = pickFreeContextForGc();
+      }
 
-      if (! _dirtyContexts.empty()) {
+      if (context == nullptr && 
+          ! _dirtyContexts.empty()) {
         context = _dirtyContexts.back();
         _dirtyContexts.pop_back();
-        useReducedWait = false;
+        if (context->_numExecutions < 10 && ! context->_hasActiveExternals) {
+          // don't collect this one
+          _freeContexts.emplace_back(context);
+          context = nullptr;
+        }
+        else {
+          wasDirty = true;
+        }
       }
-      else if (! gotSignal && ! _freeContexts.empty()) {
+
+      if (context == nullptr && 
+          ! preferFree && 
+          ! gotSignal && 
+          ! _freeContexts.empty()) {
         // we timed out waiting for a signal, so we have idle time that we can
         // spend on running the GC pro-actively
         // We'll pick one of the free contexts and clean it up
         context = pickFreeContextForGc();
+      }
 
-        // there is no context to clean up, probably they all have been cleaned up
-        // already. increase the wait time so we don't cycle too much in the GC loop
-        // and waste CPU unnecessary
-        useReducedWait = (context != nullptr);
-      }
-      else {
-        useReducedWait = false; 
-      }
+      // there is no context to clean up, probably they all have been cleaned up
+      // already. increase the wait time so we don't cycle too much in the GC loop
+      // and waste CPU unnecessary
+      useReducedWait = (context != nullptr);
     }
 
     // update last gc time
@@ -670,6 +692,7 @@ void ApplicationV8::collectGarbage () {
     gc->updateGcStamp(lastGc);
 
     if (context != nullptr) {
+      // LOG_TRACE("will collect now: %d, numExecutions: %d, hasActive: %d", (int) context->_id, (int) context->_numExecutions, (int) context->_hasActiveExternals);
       LOG_TRACE("collecting V8 garbage");
       bool hasActiveExternals = false;
       auto isolate = context->isolate;
@@ -688,8 +711,8 @@ void ApplicationV8::collectGarbage () {
         TRI_ASSERT(v8::Locker::IsLocked(isolate));
 
         TRI_GET_GLOBALS();
-        hasActiveExternals = v8g->hasActiveExternals();
         TRI_RunGarbageCollectionV8(isolate, 1.0);
+        hasActiveExternals = v8g->hasActiveExternals();
 
         localContext->Exit();
       }
@@ -706,9 +729,17 @@ void ApplicationV8::collectGarbage () {
       {
         CONDITION_LOCKER(guard, _contextCondition);
 
-        _freeContexts.emplace_back(context);
+        if (wasDirty) {
+          _freeContexts.emplace_back(context);
+        }
+        else {
+          _freeContexts.insert(_freeContexts.begin(), context);
+        }
         guard.broadcast();
       }
+    }
+    else {
+      useReducedWait = false; // sanity
     }
   }
 
@@ -1177,9 +1208,10 @@ ApplicationV8::V8Context* ApplicationV8::pickFreeContextForGc () {
   // we got more than 1 context to clean up, pick the one with the "oldest" GC stamp
   int pickedContextNr = -1; // index of context with lowest GC stamp, -1 means "none"
 
-  for (int i = 0; i < n; ++i) {
+
+  for (int i = n - 1; i > 0; --i) {
     // check if there's actually anything to clean up in the context
-    if (_freeContexts[i]->_numExecutions == 0 && ! _freeContexts[i]->_hasActiveExternals) {
+    if (_freeContexts[i]->_numExecutions < 10 && ! _freeContexts[i]->_hasActiveExternals) {
       continue;
     }
 
@@ -1189,6 +1221,7 @@ ApplicationV8::V8Context* ApplicationV8::pickFreeContextForGc () {
       pickedContextNr = i;
     }
   }
+  
   // we now have the context to clean up in pickedContextNr
 
   if (pickedContextNr == -1) {
@@ -1241,6 +1274,7 @@ bool ApplicationV8::prepareV8Instance (size_t i, bool useActions) {
   TRI_ASSERT(context->_locker == nullptr);
 
   // enter a new isolate
+  bool hasActiveExternals = false;
   context->_id = i;
   context->isolate = isolate;
   TRI_ASSERT(context->_locker == nullptr);
@@ -1331,6 +1365,8 @@ bool ApplicationV8::prepareV8Instance (size_t i, bool useActions) {
           break;
       }
     }
+    TRI_GET_GLOBALS();
+    hasActiveExternals = v8g->hasActiveExternals();
 
     // and return from the context
     localContext->Exit();
@@ -1345,7 +1381,7 @@ bool ApplicationV8::prepareV8Instance (size_t i, bool useActions) {
 
   // initialize garbage collection for context
   context->_numExecutions      = 0;
-  context->_hasActiveExternals = true;
+  context->_hasActiveExternals = hasActiveExternals;
   context->_lastGcStamp        = TRI_microtime() + randomWait;
 
   LOG_TRACE("initialized V8 context #%d", (int) i);

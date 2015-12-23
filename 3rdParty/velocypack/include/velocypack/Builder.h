@@ -35,6 +35,7 @@
 
 #include "velocypack/velocypack-common.h"
 #include "velocypack/AttributeTranslator.h"
+#include "velocypack/Basics.h"
 #include "velocypack/Buffer.h"
 #include "velocypack/Exception.h"
 #include "velocypack/Options.h"
@@ -44,6 +45,8 @@
 
 namespace arangodb {
 namespace velocypack {
+  class ArrayIterator;
+  class ObjectIterator;
 
 class Builder {
   friend class Parser;  // The parser needs access to internals.
@@ -67,6 +70,8 @@ class Builder {
                                     // open objects/arrays
   std::vector<std::vector<ValueLength>> _index;  // Indices for starts
                                                  // of subindex
+  bool _keyWritten;  // indicates that in the current object the key
+                     // has been written but the value not yet
 
   // Here are the mechanics of how this building process works:
   // The whole VPack being built starts at where _start points to
@@ -131,7 +136,7 @@ class Builder {
   // Constructor and destructor:
   explicit Builder(std::shared_ptr<Buffer<uint8_t>>& buffer,
                    Options const* options = &Options::Defaults)
-      : _buffer(buffer), _pos(0), options(options) {
+      : _buffer(buffer), _pos(0), _keyWritten(false), options(options) {
     if (_buffer.get() == nullptr) {
       throw Exception(Exception::InternalError, "Buffer cannot be a nullptr");
     }
@@ -144,7 +149,20 @@ class Builder {
   }
 
   explicit Builder(Options const* options = &Options::Defaults)
-      : _buffer(new Buffer<uint8_t>()), _pos(0), options(options) {
+      : _buffer(new Buffer<uint8_t>()), _pos(0), _keyWritten(false),
+        options(options) {
+    _start = _buffer->data();
+    _size = _buffer->size();
+
+    if (options == nullptr) {
+      throw Exception(Exception::InternalError, "Options cannot be a nullptr");
+    }
+  }
+
+  explicit Builder(Buffer<uint8_t>& buffer,
+                   Options const* options = &Options::Defaults)
+      : _pos(0), _keyWritten(false), options(options) {
+    _buffer.reset(&buffer, BufferNonDeleter<uint8_t>());
     _start = _buffer->data();
     _size = _buffer->size();
 
@@ -164,6 +182,7 @@ class Builder {
         _pos(that._pos),
         _stack(that._stack),
         _index(that._index),
+        _keyWritten(that._keyWritten),
         options(that.options) {
     if (options == nullptr) {
       throw Exception(Exception::InternalError, "Options cannot be a nullptr");
@@ -180,6 +199,7 @@ class Builder {
     _pos = that._pos;
     _stack = that._stack;
     _index = that._index;
+    _keyWritten = that._keyWritten;
     options = that.options;
     return *this;
   }
@@ -197,10 +217,12 @@ class Builder {
     _stack.swap(that._stack);
     _index.clear();
     _index.swap(that._index);
+    _keyWritten = that._keyWritten;
     options = that.options;
     that._start = that._buffer->data();
     that._size = 0;
     that._pos = 0;
+    that._keyWritten = false;
   }
 
   Builder& operator=(Builder&& that) {
@@ -216,10 +238,12 @@ class Builder {
     _stack.swap(that._stack);
     _index.clear();
     _index.swap(that._index);
+    _keyWritten = that._keyWritten;
     options = that.options;
     that._start = that._buffer->data();
     that._size = 0;
     that._pos = 0;
+    that._keyWritten = false;
     return *this;
   }
 
@@ -229,6 +253,7 @@ class Builder {
   std::shared_ptr<Buffer<uint8_t>> steal() {
     std::shared_ptr<Buffer<uint8_t>> res = std::move(_buffer);
     _buffer.reset(new Buffer<uint8_t>());
+    _pos = 0;
     return res;
   }
 
@@ -238,6 +263,8 @@ class Builder {
 
   std::string toString() const;
 
+  std::string toJson() const;
+
   static Builder clone(Slice const& slice,
                        Options const* options = &Options::Defaults) {
     if (options == nullptr) {
@@ -246,7 +273,7 @@ class Builder {
 
     Builder b(options);
     b.add(slice);
-    return std::move(b);
+    return b;   // Use return value optimization
   }
 
   // Clear and start from scratch:
@@ -264,7 +291,12 @@ class Builder {
   }
 
   // Return a Slice of the result:
-  Slice slice() const { return Slice(start(), options); }
+  Slice slice() const { 
+    if (isEmpty()) { 
+      return Slice();
+    }
+    return Slice(start(), options); 
+  }
 
   // Compute the actual size here, but only when sealed
   ValueLength size() const {
@@ -274,7 +306,25 @@ class Builder {
     return _pos;
   }
 
+  bool isEmpty() const throw() { return _pos == 0; }
+
   bool isClosed() const throw() { return _stack.empty(); }
+
+  bool isOpenArray() const throw() {
+    if (_stack.empty()) {
+      return false;
+    }
+    ValueLength const tos = _stack.back();
+    return _start[tos] == 0x06 || _start[tos] == 0x13;
+  }
+
+  bool isOpenObject() const throw() {
+    if (_stack.empty()) {
+      return false;
+    }
+    ValueLength const tos = _stack.back();
+    return _start[tos] == 0x0b || _start[tos] == 0x14;
+  }
 
   // Add a subvalue into an object from a Value:
   uint8_t* add(std::string const& attrName, Value const& sub);
@@ -284,6 +334,11 @@ class Builder {
 
   // Add a subvalue into an object from a ValuePair:
   uint8_t* add(std::string const& attrName, ValuePair const& sub);
+  
+  // Add all subkeys and subvalues into an object from an ObjectIterator
+  // and leaves open the object intentionally
+  uint8_t* add(ObjectIterator& sub);
+  uint8_t* add(ObjectIterator&& sub);
 
   // Add a subvalue into an array from a Value:
   uint8_t* add(Value const& sub);
@@ -293,9 +348,14 @@ class Builder {
 
   // Add a subvalue into an array from a ValuePair:
   uint8_t* add(ValuePair const& sub);
+  
+  // Add all subvalues into an array from an ArrayIterator
+  // and leaves open the array intentionally
+  uint8_t* add(ArrayIterator& sub);
+  uint8_t* add(ArrayIterator&& sub);
 
   // Seal the innermost array or object:
-  void close();
+  Builder& close();
 
   // Remove last subvalue written to an (unclosed) object or array:
   // Throws if an error occurs.
@@ -435,6 +495,25 @@ private:
 
  private:
 
+  inline void checkKeyIsString(bool isString) {
+    if (! _stack.empty()) {
+      ValueLength const tos = _stack.back();
+      if (_start[tos] == 0x0b || _start[tos] == 0x14) {
+        if (! _keyWritten) {
+          if (isString) {
+            _keyWritten = true;
+          }
+          else {
+            throw Exception(Exception::BuilderKeyMustBeString);
+          }
+        }
+        else {
+          _keyWritten = false;
+        }
+      }
+    }
+  }
+
   inline void addArray(bool unindexed = false) {
     addCompoundValue(unindexed ? 0x13 : 0x06);
   }
@@ -447,12 +526,10 @@ private:
   uint8_t* addInternal(T const& sub) {
     bool haveReported = false;
     if (!_stack.empty()) {
-      ValueLength& tos = _stack.back();
-      if (_start[tos] != 0x06 && _start[tos] != 0x13) {
-        throw Exception(Exception::BuilderNeedOpenArray);
+      if (! _keyWritten) {
+        reportAdd();
+        haveReported = true;
       }
-      reportAdd(tos);
-      haveReported = true;
     }
     try {
       return set(sub);
@@ -473,7 +550,10 @@ private:
       if (_start[tos] != 0x0b && _start[tos] != 0x14) {
         throw Exception(Exception::BuilderNeedOpenObject);
       }
-      reportAdd(tos);
+      if (_keyWritten) {
+        throw Exception(Exception::BuilderKeyAlreadyWritten);
+      }
+      reportAdd();
       haveReported = true;
     }
 
@@ -484,13 +564,19 @@ private:
             options->attributeTranslator->translate(attrName);
 
         if (translated != nullptr) {
-          set(Slice(translated, options));
+          Slice item(translated);
+          ValueLength const l = item.byteSize();
+          reserveSpace(l);
+          memcpy(_start + _pos, translated, checkOverflow(l));
+          _pos += l;
+          _keyWritten = true;
           return set(sub);
         }
         // otherwise fall through to regular behavior
       }
 
       set(Value(attrName, ValueType::String));
+      _keyWritten = true;
       return set(sub);
     } catch (...) {
       // clean up in case of an exception
@@ -518,11 +604,16 @@ private:
     bool haveReported = false;
     if (!_stack.empty()) {
       ValueLength& tos = _stack.back();
-      if (_start[tos] != 0x06 && _start[tos] != 0x13) {
-        throw Exception(Exception::BuilderNeedOpenCompound);
+      if (! _keyWritten) {
+        if (_start[tos] != 0x06 && _start[tos] != 0x13) {
+          throw Exception(Exception::BuilderNeedOpenArray);
+        }
+        reportAdd();
+        haveReported = true;
       }
-      reportAdd(tos);
-      haveReported = true;
+      else {
+        _keyWritten = false;
+      }
     }
     try {
       addCompoundValue(type);
@@ -533,7 +624,6 @@ private:
       }
       throw;
     }
-
   }
 
   uint8_t* set(Value const& item);
@@ -547,9 +637,9 @@ private:
     _index[depth].pop_back();
   }
 
-  void reportAdd(ValueLength base) {
+  void reportAdd() {
     size_t depth = _stack.size() - 1;
-    _index[depth].push_back(_pos - base);
+    _index[depth].push_back(_pos - _stack[depth]);
   }
 
   void appendLength(ValueLength v, uint64_t n) {
@@ -614,7 +704,6 @@ struct BuilderNonDeleter {
   }
 };
 
-// convenience class scope guard for building objects
 struct BuilderContainer {
   BuilderContainer (Builder* builder) : builder(builder) {}
 
@@ -633,7 +722,8 @@ struct BuilderContainer {
   Builder* builder;
 };
 
-struct ObjectBuilder final : public BuilderContainer, public NoHeapAllocation {
+// convenience class scope guard for building objects
+struct ObjectBuilder final : public BuilderContainer, private NonHeapAllocatable, NonCopyable {
   ObjectBuilder(Builder* builder, bool allowUnindexed = false) : BuilderContainer(builder) {
     builder->openObject(allowUnindexed);
   }
@@ -644,17 +734,33 @@ struct ObjectBuilder final : public BuilderContainer, public NoHeapAllocation {
     builder->add(attributeName, Value(ValueType::Object, allowUnindexed)); 
   }
   ~ObjectBuilder() {
-    builder->close();
+    try {
+      builder->close();
+    }
+    catch (...) {
+      // destructors must not throw
+    }
   }
 };
 
 // convenience class scope guard for building arrays
-struct ArrayBuilder final : public BuilderContainer, public NoHeapAllocation {
+struct ArrayBuilder final : public BuilderContainer, private NonHeapAllocatable, NonCopyable {
   ArrayBuilder(Builder* builder, bool allowUnindexed = false) : BuilderContainer(builder) {
     builder->openArray(allowUnindexed);
   }
+  ArrayBuilder(Builder* builder, std::string const& attributeName, bool allowUnindexed = false) : BuilderContainer(builder) {
+    builder->add(attributeName, Value(ValueType::Array, allowUnindexed));
+  }
+  ArrayBuilder(Builder* builder, char const* attributeName, bool allowUnindexed = false) : BuilderContainer(builder) {
+    builder->add(attributeName, Value(ValueType::Array, allowUnindexed));
+  }
   ~ArrayBuilder() {
-    builder->close();
+    try {
+      builder->close();
+    }
+    catch (...) {
+      // destructors must not throw
+    }
   }
 };
 

@@ -406,6 +406,7 @@ function isGlobalModule(filename) {
 //    Then have it load  the file contents before returning its exports
 //    object.
 Module._load = function(request, parent, isMain) {
+  request = request.replace(/^org\/arangodb/, '@arangodb');
 
   var filename = request;
   var dbModule = false;
@@ -453,7 +454,8 @@ Module._load = function(request, parent, isMain) {
   }
 
   cache[filename] = module;
-  LOADING.push({cache, filename});
+  var loading = {cache, filename};
+  LOADING.push(loading);
 
   var hadException = true;
 
@@ -468,7 +470,8 @@ Module._load = function(request, parent, isMain) {
     if (hadException) {
       delete cache[filename];
     }
-    var i = LOADING.indexOf(filename);
+    
+    var i = LOADING.indexOf(loading);
     if (i !== -1) {
       LOADING.splice(i, 1);
     }
@@ -626,17 +629,6 @@ Module._extensions['.json'] = function(module, filename) {
   }
 };
 
-
-Module._extensions['.coffee'] = function(module, filename) {
-  require('org/arangodb/deprecated')(
-    '2.9',
-    'CoffeeScript support is deprecated,'
-    + ' please pre-compile CoffeeScript modules to JavaScript using external build tools.'
-  );
-  var content = fs.readFileSync(filename, 'utf8');
-  var cs = require('coffee-script');
-  module._compile(cs.compile(stripBOM(content), {bare: true}), filename);
-};
 
 // backwards compatibility
 Module.Module = Module;

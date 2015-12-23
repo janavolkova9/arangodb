@@ -289,17 +289,17 @@ HashIndex::HashIndex (TRI_idx_iid_t iid,
     indexBuckets = collection->_info._indexBuckets;
   }
     
-  std::unique_ptr<HashElementFunc> func(new HashElementFunc(_paths.size()));
-  std::unique_ptr<IsEqualElementElementByKey> compare(new IsEqualElementElementByKey(_paths.size()));
+  auto func = std::make_unique<HashElementFunc>(_paths.size());
+  auto compare = std::make_unique<IsEqualElementElementByKey>(_paths.size());
 
   if (unique) {
-    std::unique_ptr<TRI_HashArray_t> array(new TRI_HashArray_t(HashKey,
-                                                               *(func.get()),
-                                                               IsEqualKeyElementHash,
-                                                               IsEqualElementElement,
-                                                               *(compare.get()),
-                                                               indexBuckets,
-                                                               [] () -> std::string { return "unique hash-array"; }));
+    auto array = std::make_unique<TRI_HashArray_t>(HashKey,
+                                                   *(func.get()),
+                                                   IsEqualKeyElementHash,
+                                                   IsEqualElementElement,
+                                                   *(compare.get()),
+                                                   indexBuckets,
+                                                   [] () -> std::string { return "unique hash-array"; });
 
     _uniqueArray = new HashIndex::UniqueArray(array.get(), func.get(), compare.get());
     array.release();
@@ -307,14 +307,14 @@ HashIndex::HashIndex (TRI_idx_iid_t iid,
   else {
     _multiArray = nullptr;
       
-    std::unique_ptr<TRI_HashArrayMulti_t> array(new TRI_HashArrayMulti_t(HashKey, 
-                                                                         *(func.get()),
-                                                                         IsEqualKeyElement,
-                                                                         IsEqualElementElement,
-                                                                         *(compare.get()),
-                                                                         indexBuckets,
-                                                                         64,
-                                                                         [] () -> std::string { return "multi hash-array"; }));
+    auto array = std::make_unique<TRI_HashArrayMulti_t>(HashKey, 
+                                                        *(func.get()),
+                                                        IsEqualKeyElement,
+                                                        IsEqualElementElement,
+                                                        *(compare.get()),
+                                                        indexBuckets,
+                                                        64,
+                                                        [] () -> std::string { return "multi hash-array"; });
       
     _multiArray = new HashIndex::MultiArray(array.get(), func.get(), compare.get());
 
@@ -904,65 +904,76 @@ IndexIterator* HashIndex::iteratorForCondition (IndexIteratorContext* context,
   std::vector<TRI_hash_index_search_value_t*> searchValues;
   searchValues.reserve(maxPermutations);
 
-  // create all permutations
-  auto shaper = _collection->getShaper(); 
-  size_t current = 0;
-  bool done = false;
-  while (! done) {
-    std::unique_ptr<TRI_hash_index_search_value_t> searchValue(new TRI_hash_index_search_value_t);
-    searchValue->reserve(n);
+  try {
+    // create all permutations
+    auto shaper = _collection->getShaper(); 
+    size_t current = 0;
+    bool done = false;
+    while (! done) {
+      auto searchValue = std::make_unique<TRI_hash_index_search_value_t>();
+      searchValue->reserve(n);
 
-    bool valid = true;
-    for (size_t i = 0; i < n; ++i) {
-      auto& state = permutationStates[i];
-      std::unique_ptr<TRI_json_t> json(state.getValue()->toJsonValue(TRI_UNKNOWN_MEM_ZONE));
+      bool valid = true;
+      for (size_t i = 0; i < n; ++i) {
+        auto& state = permutationStates[i];
+        std::unique_ptr<TRI_json_t> json(state.getValue()->toJsonValue(TRI_UNKNOWN_MEM_ZONE));
 
-      if (json == nullptr) {
-        valid = false;
-        break;
+        if (json == nullptr) {
+          valid = false;
+          break;
+        }
+
+        auto shaped = TRI_ShapedJsonJson(shaper, json.get(), false);
+          
+        if (shaped == nullptr) {
+          // no such shape exists. this means we won't find this value and can go on with the next permutation
+          valid = false;
+          break;
+        }
+        
+        searchValue->_values[state.attributePosition] = *shaped;
+        TRI_Free(shaper->memoryZone(), shaped);
       }
 
-      auto shaped = TRI_ShapedJsonJson(shaper, json.get(), false);
-         
-      if (shaped == nullptr) {
-        // no such shape exists. this means we won't find this value and can go on with the next permutation
-        valid = false;
-        break;
+      if (valid) {
+        searchValues.push_back(searchValue.get());
+        searchValue.release();
       }
+
+      // now permute
+      while (true) {
+        if (++permutationStates[current].current < permutationStates[current].n) {
+          current = 0;
+          // abort inner iteration
+          break;
+        }
+
+        permutationStates[current].current = 0;
+
+        if (++current >= n) {
+          done = true;
+          break;
+        }
+        // next inner iteration
+      }
+    }
+
+    TRI_ASSERT(searchValues.size() <= maxPermutations);
       
-      searchValue->_values[state.attributePosition] = *shaped;
-      TRI_Free(shaper->memoryZone(), shaped);
+    // Create the iterator
+    TRI_IF_FAILURE("HashIndex::noIterator")  {
+      THROW_ARANGO_EXCEPTION(TRI_ERROR_DEBUG);
     }
-
-    if (valid) {
-      searchValues.push_back(searchValue.get());
-      searchValue.release();
+      
+  }
+  catch (...) {
+    // prevent a leak here
+    for (auto& it : searchValues) {
+      delete it;
     }
-
-    // now permute
-    while (true) {
-      if (++permutationStates[current].current < permutationStates[current].n) {
-        current = 0;
-        // abort inner iteration
-        break;
-      }
-
-      permutationStates[current].current = 0;
-
-      if (++current >= n) {
-        done = true;
-        break;
-      }
-      // next inner iteration
-    }
+    throw;
   }
 
-  TRI_ASSERT(searchValues.size() <= maxPermutations);
-    
-  // Create the iterator
-  TRI_IF_FAILURE("HashIndex::noIterator")  {
-    THROW_ARANGO_EXCEPTION(TRI_ERROR_DEBUG);
-  }
   return new HashIndexIterator(this, searchValues);
 }
 

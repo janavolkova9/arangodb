@@ -1210,8 +1210,8 @@ static void ClientConnection_httpSendFile (const v8::FunctionCallbackInfo<v8::Va
   TRI_Free(TRI_UNKNOWN_MEM_ZONE, body);
 
   if (tryCatch.HasCaught()) {
-      string exception = TRI_StringifyV8Exception(isolate, &tryCatch);
-      isolate->ThrowException(tryCatch.Exception());
+    //string exception = TRI_StringifyV8Exception(isolate, &tryCatch);
+    isolate->ThrowException(tryCatch.Exception());
     return;
   }
 
@@ -1640,8 +1640,10 @@ static void RunShell (v8::Isolate* isolate, v8::Handle<v8::Context> context, boo
       // this will change the prompt for the next round
       promptError = true;
     }
-      
-    ClientConnection->setInterrupted(false);
+    
+    if (ClientConnection) {  
+      ClientConnection->setInterrupted(false);
+    }
 
     BaseClient.stopPager();
     BaseClient.printLine("");
@@ -1684,7 +1686,7 @@ static bool RunUnitTests (v8::Isolate* isolate, v8::Handle<v8::Context> context)
   context->Global()->Set(TRI_V8_ASCII_STRING("SYS_UNIT_TESTS_RESULT"), v8::True(isolate));
 
   // run tests
-  auto input = TRI_V8_ASCII_STRING("require(\"org/arangodb/testrunner\").runCommandLineTests();");
+  auto input = TRI_V8_ASCII_STRING("require(\"@arangodb/testrunner\").runCommandLineTests();");
   auto name  = TRI_V8_ASCII_STRING(TRI_V8_SHELL_COMMAND_NAME);
   TRI_ExecuteJavaScriptString(isolate, context, input, name, true);
 
@@ -1929,7 +1931,9 @@ static void LocalExitFunction (int exitCode, void* data) {
 
 #endif
 
-static bool printHelo (bool useServer, bool promptError) {
+static bool PrintHelo (bool useServer) {
+  bool promptError = false;
+
   // .............................................................................
   // banner
   // .............................................................................
@@ -2036,7 +2040,9 @@ static bool printHelo (bool useServer, bool promptError) {
     BaseClient.printWelcomeInfo();
 
     if (useServer) {
-      if (ClientConnection->isConnected() && ClientConnection->getLastHttpReturnCode() == HttpResponse::OK) {
+      if (ClientConnection &&
+          ClientConnection->isConnected() && 
+          ClientConnection->getLastHttpReturnCode() == HttpResponse::OK) {
         ostringstream is;
         is << "Connected to ArangoDB '" << BaseClient.endpointString()
            << "' version: " << ClientConnection->getVersion() 
@@ -2052,7 +2058,8 @@ static bool printHelo (bool useServer, bool promptError) {
            << "', username: '" << BaseClient.username() << "'";
         BaseClient.printErrLine(is.str());
 
-        if (ClientConnection->getErrorMessage() != "") {
+        if (ClientConnection &&
+            ClientConnection->getErrorMessage() != "") {
           ostringstream is2;
           is2 << "Error message '" << ClientConnection->getErrorMessage() << "'";
           BaseClient.printErrLine(is2.str());
@@ -2063,6 +2070,7 @@ static bool printHelo (bool useServer, bool promptError) {
       BaseClient.printLine("", true);
     }
   }
+
   return promptError;
 }
 
@@ -2284,8 +2292,6 @@ class BufferAllocator : public v8::ArrayBuffer::Allocator {
 int main (int argc, char* args[]) {
   int ret = EXIT_SUCCESS;
   eRunMode runMode = eInteractive;
-  // reset the prompt error flag (will determine prompt colors)
-  bool promptError = false;
 #if _WIN32
   extern bool cygwinShell;
   if (getenv("SHELL") != nullptr) {
@@ -2368,7 +2374,7 @@ int main (int argc, char* args[]) {
   }
 
 #ifdef TRI_FORCE_ARMV6
-  const string forceARMv6 = "--noenable-armv7";
+  std::string const forceARMv6 = "--noenable-armv7";
   v8::V8::SetFlagsFromString(forceARMv6.c_str(), (int) forceARMv6.size());
 #endif
 
@@ -2407,7 +2413,8 @@ int main (int argc, char* args[]) {
 
       InitCallbacks(isolate, useServer, runMode);
 
-      promptError = printHelo(useServer, promptError);
+      // reset the prompt error flag (will determine prompt colors)
+      bool promptError = PrintHelo(useServer);
 
       ret = WarmupEnvironment(isolate, positionals, runMode);
 

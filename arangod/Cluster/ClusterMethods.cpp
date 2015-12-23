@@ -57,6 +57,23 @@ namespace triagens {
 
 template<typename T>
 static T ExtractFigure (TRI_json_t const* json,
+                        char const* name) {
+
+  TRI_json_t const* value = TRI_LookupObjectJson(json, name);
+
+  if (! TRI_IsNumberJson(value)) {
+    return static_cast<T>(0);
+  }
+
+  return static_cast<T>(value->_value._number);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief extracts a numeric value from an hierarchical JSON
+////////////////////////////////////////////////////////////////////////////////
+
+template<typename T>
+static T ExtractFigure (TRI_json_t const* json,
                         char const* group,
                         char const* name) {
 
@@ -66,13 +83,7 @@ static T ExtractFigure (TRI_json_t const* json,
     return static_cast<T>(0);
   }
 
-  TRI_json_t const* value = TRI_LookupObjectJson(g, name);
-
-  if (! TRI_IsNumberJson(value)) {
-    return static_cast<T>(0);
-  }
-
-  return static_cast<T>(value->_value._number);
+  return ExtractFigure<T>(g, name);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -148,7 +159,7 @@ bool shardKeysChanged (std::string const& dbname,
   TRI_InitNullJson(&nullJson);
 
   ClusterInfo* ci = ClusterInfo::instance();
-  shared_ptr<CollectionInfo> const& c = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> c = ci->getCollection(dbname, collname);
   const std::vector<std::string>& shardKeys = c->shardKeys();
 
   for (size_t i = 0; i < shardKeys.size(); ++i) {
@@ -196,7 +207,8 @@ int usersOnCoordinator (std::string const& dbname,
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, TRI_COL_NAME_USERS);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, TRI_COL_NAME_USERS);
 
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
@@ -210,40 +222,38 @@ int usersOnCoordinator (std::string const& dbname,
 
   // If we get here, the sharding attributes are not only _key, therefore
   // we have to contact everybody:
-  ClusterCommResult* res;
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
 
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headers = new map<string, string>;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
 
     // set collection name (shard id)
     std::shared_ptr<std::string> body(new string);
     body->append("{\"collection\":\"");
-    body->append((*it).first);
+    body->append(p.first);
     body->append("\"}");
 
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
-                           "/_db/" + StringUtils::urlEncode(dbname) + 
-                           "/_api/simple/all",
-                           body,
-                           headers, 
-                           nullptr, 
-                           10.0);
-    delete res;
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+                     triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
+                     "/_db/" + StringUtils::urlEncode(dbname) + 
+                     "/_api/simple/all",
+                     body,
+                     headers, 
+                     nullptr, 
+                     10.0);
   }
 
   // Now listen to the results:
   int count;
   int nrok = 0;
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait("", coordTransactionID, 0, "", timeout);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code == triagens::rest::HttpResponse::OK ||
-          res->answer_code == triagens::rest::HttpResponse::CREATED) {
-        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res->answer->body());
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait("", coordTransactionID, 0, "", timeout);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code == triagens::rest::HttpResponse::OK ||
+          res.answer_code == triagens::rest::HttpResponse::CREATED) {
+        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res.answer->body());
 
         if (JsonHelper::isObject(json)) {
           TRI_json_t const* r = TRI_LookupObjectJson(json, "result");
@@ -266,10 +276,9 @@ int usersOnCoordinator (std::string const& dbname,
         }
       }
     }
-    delete res;
   }
 
-  if (nrok != (int) shards.size()) {
+  if (nrok != (int) shards->size()) {
     return TRI_ERROR_INTERNAL;
   }
 
@@ -290,7 +299,8 @@ int revisionOnCoordinator (std::string const& dbname,
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
 
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
@@ -300,33 +310,27 @@ int revisionOnCoordinator (std::string const& dbname,
 
   // If we get here, the sharding attributes are not only _key, therefore
   // we have to contact everybody:
-  ClusterCommResult* res;
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
 
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headers = new map<string, string>;
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_GET,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/collection/" +
-                           StringUtils::urlEncode(it->first) + "/revision",
-                           std::shared_ptr<std::string const>(), 
-                           headers, 
-                           nullptr, 
-                           300.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+           triagens::rest::HttpRequest::HTTP_REQUEST_GET,
+           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/collection/" +
+           StringUtils::urlEncode(p.first) + "/revision",
+           std::shared_ptr<std::string const>(), headers, nullptr, 300.0);
   }
 
   // Now listen to the results:
   int count;
   int nrok = 0;
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait( "", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code == triagens::rest::HttpResponse::OK) {
-        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res->answer->body());
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait( "", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code == triagens::rest::HttpResponse::OK) {
+        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res.answer->body());
 
         if (JsonHelper::isObject(json)) {
           TRI_json_t const* r = TRI_LookupObjectJson(json, "revision");
@@ -347,10 +351,9 @@ int revisionOnCoordinator (std::string const& dbname,
         }
       }
     }
-    delete res;
   }
 
-  if (nrok != (int) shards.size()) {
+  if (nrok != (int) shards->size()) {
     return TRI_ERROR_INTERNAL;
   }
 
@@ -371,7 +374,8 @@ int figuresOnCoordinator (string const& dbname,
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
 
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
@@ -386,33 +390,27 @@ int figuresOnCoordinator (string const& dbname,
 
   // If we get here, the sharding attributes are not only _key, therefore
   // we have to contact everybody:
-  ClusterCommResult* res;
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
 
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headers = new map<string, string>;
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_GET,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/collection/" +
-                           StringUtils::urlEncode(it->first) + "/figures",
-                           std::shared_ptr<std::string const>(), 
-                           headers, 
-                           nullptr, 
-                           300.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+         triagens::rest::HttpRequest::HTTP_REQUEST_GET,
+         "/_db/" + StringUtils::urlEncode(dbname) + "/_api/collection/" +
+         StringUtils::urlEncode(p.first) + "/figures",
+         std::shared_ptr<std::string const>(), headers, nullptr, 300.0);
   }
 
   // Now listen to the results:
   int count;
   int nrok = 0;
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait( "", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code == triagens::rest::HttpResponse::OK) {
-        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res->answer->body());
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait( "", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code == triagens::rest::HttpResponse::OK) {
+        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res.answer->body());
 
         if (JsonHelper::isObject(json)) {
           TRI_json_t const* figures = TRI_LookupObjectJson(json, "figures");
@@ -441,19 +439,20 @@ int figuresOnCoordinator (string const& dbname,
             result->_journalfileSize      += ExtractFigure<int64_t>(figures, "journals", "fileSize");
             result->_compactorfileSize    += ExtractFigure<int64_t>(figures, "compactors", "fileSize");
             result->_shapefileSize        += ExtractFigure<int64_t>(figures, "shapefiles", "fileSize");
+            
+            result->_numberDocumentDitches+= ExtractFigure<uint64_t>(figures, "documentReferences");
           }
           nrok++;
         }
 
-        if (json != 0) {
+        if (json != nullptr) {
           TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
         }
       }
     }
-    delete res;
   }
 
-  if (nrok != (int) shards.size()) {
+  if (nrok != (int) shards->size()) {
     TRI_Free(TRI_UNKNOWN_MEM_ZONE, result);
     result = 0;
     return TRI_ERROR_INTERNAL;
@@ -479,37 +478,35 @@ int countOnCoordinator (
   result = 0;
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
 
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
   }
 
-  ClusterCommResult* res;
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headers = new map<string, string>;
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_GET,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/collection/" +
-                           StringUtils::urlEncode(it->first) + "/count",
-                           std::shared_ptr<std::string>(nullptr), 
-                           headers, 
-                           nullptr, 
-                           300.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+         triagens::rest::HttpRequest::HTTP_REQUEST_GET,
+         "/_db/" + StringUtils::urlEncode(dbname) + "/_api/collection/" +
+         StringUtils::urlEncode(p.first) + "/count",
+         std::shared_ptr<std::string>(nullptr), 
+         headers, 
+         nullptr, 
+         300.0);
   }
   // Now listen to the results:
   int count;
   int nrok = 0;
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait("", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code == triagens::rest::HttpResponse::OK) {
-        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res->answer->body());
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait("", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code == triagens::rest::HttpResponse::OK) {
+        TRI_json_t* json = TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res.answer->body());
 
         if (JsonHelper::isObject(json)) {
           // add to the total
@@ -522,10 +519,9 @@ int countOnCoordinator (
         }
       }
     }
-    delete res;
   }
 
-  if (nrok != (int) shards.size()) {
+  if (nrok != (int) shards->size()) {
     return TRI_ERROR_INTERNAL;
   }
 
@@ -538,21 +534,22 @@ int countOnCoordinator (
 ////////////////////////////////////////////////////////////////////////////////
 
 int createDocumentOnCoordinator (
-                string const& dbname,
-                string const& collname,
+                std::string const& dbname,
+                std::string const& collname,
                 bool waitForSync,
                 TRI_json_t* json,
-                map<string, string> const& headers,
+                std::map<std::string, std::string> const& headers,
                 triagens::rest::HttpResponse::HttpResponseCode& responseCode,
-                map<string, string>& resultHeaders,
-                string& resultBody) {
+                std::map<std::string, std::string>& resultHeaders,
+                std::string& resultBody) {
 
   // Set a few variables needed for our work:
   ClusterInfo* ci = ClusterInfo::instance();
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
 
   if (collinfo->empty()) {
     TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
@@ -609,23 +606,20 @@ int createDocumentOnCoordinator (
   TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
 
   // Send a synchronous request to that shard using ClusterComm:
-  ClusterCommResult* res;
-  res = cc->syncRequest("", TRI_NewTickServer(), "shard:" + shardID,
-                        triagens::rest::HttpRequest::HTTP_REQUEST_POST,
-                        "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document?collection="+
-                        StringUtils::urlEncode(shardID) + "&waitForSync=" +
-                        (waitForSync ? "true" : "false"), body, headers, 60.0);
+  auto res = cc->syncRequest("", TRI_NewTickServer(), "shard:" + shardID,
+        triagens::rest::HttpRequest::HTTP_REQUEST_POST,
+        "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document?collection="+
+        StringUtils::urlEncode(shardID) + "&waitForSync=" +
+        (waitForSync ? "true" : "false"), body, headers, 60.0);
 
   if (res->status == CL_COMM_TIMEOUT) {
     // No reply, we give up:
-    delete res;
     return TRI_ERROR_CLUSTER_TIMEOUT;
   }
   if (res->status == CL_COMM_ERROR) {
     // This could be a broken connection or an Http error:
     if (res->result == nullptr || ! res->result->isComplete()) {
       // there is not result
-      delete res;
       return TRI_ERROR_CLUSTER_CONNECTION_LOST;
     }
     // In this case a proper HTTP error was reported by the DBserver,
@@ -637,7 +631,6 @@ int createDocumentOnCoordinator (
   resultHeaders = res->result->getHeaderFields();
   resultBody.assign(res->result->getBody().c_str(),
                     res->result->getBody().length());
-  delete res;
   return TRI_ERROR_NO_ERROR;
 }
 
@@ -652,7 +645,7 @@ int deleteDocumentOnCoordinator (
                 TRI_voc_rid_t const rev,
                 TRI_doc_update_policy_e policy,
                 bool waitForSync,
-                map<string, string> const& headers,
+                std::unique_ptr<std::map<std::string, std::string>>& headers,
                 triagens::rest::HttpResponse::HttpResponseCode& responseCode,
                 map<string, string>& resultHeaders,
                 string& resultBody) {
@@ -662,7 +655,8 @@ int deleteDocumentOnCoordinator (
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
   }
@@ -687,7 +681,6 @@ int deleteDocumentOnCoordinator (
   TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
 
   // Some stuff to prepare cluster-intern requests:
-  ClusterCommResult* res;
   string revstr;
   if (rev != 0) {
     revstr = "&rev="+StringUtils::itoa(rev);
@@ -705,22 +698,20 @@ int deleteDocumentOnCoordinator (
     }
 
     // Send a synchronous request to that shard using ClusterComm:
-    res = cc->syncRequest("", TRI_NewTickServer(), "shard:"+shardID,
-                          triagens::rest::HttpRequest::HTTP_REQUEST_DELETE,
-                          "/_db/"+dbname+"/_api/document/"+
-                          StringUtils::urlEncode(shardID)+"/"+StringUtils::urlEncode(key)+
-                          "?waitForSync="+(waitForSync ? "true" : "false")+
-                          revstr+policystr, "", headers, 60.0);
+    auto res = cc->syncRequest("", TRI_NewTickServer(), "shard:"+shardID,
+        triagens::rest::HttpRequest::HTTP_REQUEST_DELETE,
+        "/_db/"+dbname+"/_api/document/"+
+        StringUtils::urlEncode(shardID)+"/"+StringUtils::urlEncode(key)+
+        "?waitForSync="+(waitForSync ? "true" : "false")+
+        revstr+policystr, "", *headers, 60.0);
 
     if (res->status == CL_COMM_TIMEOUT) {
       // No reply, we give up:
-      delete res;
       return TRI_ERROR_CLUSTER_TIMEOUT;
     }
     if (res->status == CL_COMM_ERROR) {
       // This could be a broken connection or an Http error:
       if (res->result == nullptr || ! res->result->isComplete()) {
-        delete res;
         return TRI_ERROR_CLUSTER_CONNECTION_LOST;
       }
       // In this case a proper HTTP error was reported by the DBserver,
@@ -732,44 +723,37 @@ int deleteDocumentOnCoordinator (
     resultHeaders = res->result->getHeaderFields();
     resultBody.assign(res->result->getBody().c_str(),
                       res->result->getBody().length());
-    delete res;
     return TRI_ERROR_NO_ERROR;
   }
 
   // If we get here, the sharding attributes are not only _key, therefore
   // we have to contact everybody:
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headersCopy = new map<string, string>(headers);
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_DELETE,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/" +
-                           StringUtils::urlEncode(it->first) + "/" + StringUtils::urlEncode(key) +
-                           "?waitForSync=" + (waitForSync ? "true" : "false") + revstr + policystr, 
-                           std::shared_ptr<std::string const>(), 
-                           headersCopy, 
-                           nullptr, 
-                           60.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headersCopy
+        (new std::map<std::string, std::string>(*headers));
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+       triagens::rest::HttpRequest::HTTP_REQUEST_DELETE,
+       "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/" +
+       StringUtils::urlEncode(p.first) + "/" + StringUtils::urlEncode(key) +
+       "?waitForSync=" + (waitForSync ? "true" : "false") + revstr + policystr, 
+       std::shared_ptr<std::string const>(), headersCopy, nullptr, 60.0);
   }
   // Now listen to the results:
   int count;
   int nrok = 0;
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait("", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code != triagens::rest::HttpResponse::NOT_FOUND ||
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait("", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code != triagens::rest::HttpResponse::NOT_FOUND ||
           (nrok == 0 && count == 1)) {
         nrok++;
-        responseCode = res->answer_code;
-        resultHeaders = res->answer->headers();
-        resultBody = string(res->answer->body(), res->answer->bodySize());
+        responseCode = res.answer_code;
+        resultHeaders = res.answer->headers();
+        resultBody = string(res.answer->body(), res.answer->bodySize());
       }
     }
-    delete res;
   }
 
   // Note that nrok is always at least 1!
@@ -792,47 +776,41 @@ int truncateCollectionOnCoordinator ( string const& dbname,
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
 
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
   }
 
   // Some stuff to prepare cluster-intern requests:
-  ClusterCommResult* res;
-
   // We have to contact everybody:
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headersCopy = new map<string, string>();
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
-                           "/_db/" + StringUtils::urlEncode(dbname) +
-                           "/_api/collection/" + it->first + "/truncate",
-                           std::shared_ptr<std::string>(nullptr), 
-                           headersCopy, 
-                           nullptr, 
-                           60.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+                     triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
+                     "/_db/" + StringUtils::urlEncode(dbname) +
+                     "/_api/collection/" + p.first + "/truncate",
+                     std::shared_ptr<std::string>(nullptr), 
+                     headers, nullptr, 60.0);
   }
   // Now listen to the results:
   unsigned int count;
   unsigned int nrok = 0;
-  for (count = (unsigned int) shards.size(); count > 0; count--) {
-    res = cc->wait( "", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code == triagens::rest::HttpResponse::OK) {
+  for (count = (unsigned int) shards->size(); count > 0; count--) {
+    auto res = cc->wait( "", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code == triagens::rest::HttpResponse::OK) {
         nrok++;
       }
     }
-    delete res;
   }
 
   // Note that nrok is always at least 1!
-  if (nrok < shards.size()) {
+  if (nrok < shards->size()) {
     return TRI_ERROR_CLUSTER_COULD_NOT_TRUNCATE_COLLECTION;
   }
   return TRI_ERROR_NO_ERROR;
@@ -847,7 +825,7 @@ int getDocumentOnCoordinator (
                 string const& collname,
                 string const& key,
                 TRI_voc_rid_t const rev,
-                map<string, string> const& headers,
+                std::unique_ptr<std::map<std::string, std::string>>& headers,
                 bool generateDocument,
                 triagens::rest::HttpResponse::HttpResponseCode& responseCode,
                 map<string, string>& resultHeaders,
@@ -858,7 +836,8 @@ int getDocumentOnCoordinator (
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
   }
@@ -883,7 +862,6 @@ int getDocumentOnCoordinator (
   TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
 
   // Some stuff to prepare cluster-intern requests:
-  ClusterCommResult* res;
   string revstr;
   if (rev != 0) {
     revstr = "?rev=" + StringUtils::itoa(rev);
@@ -903,20 +881,19 @@ int getDocumentOnCoordinator (
     }
 
     // Send a synchronous request to that shard using ClusterComm:
-    res = cc->syncRequest("", TRI_NewTickServer(), "shard:"+shardID, reqType,
-                          "/_db/"+dbname+"/_api/document/"+
-                          StringUtils::urlEncode(shardID)+"/"+StringUtils::urlEncode(key)+
-                          revstr, "", headers, 60.0);
+    auto res = cc->syncRequest("", TRI_NewTickServer(),
+            "shard:"+shardID, reqType,
+            "/_db/"+dbname+"/_api/document/"+
+            StringUtils::urlEncode(shardID)+"/"+StringUtils::urlEncode(key)+
+            revstr, "", *headers, 60.0);
 
     if (res->status == CL_COMM_TIMEOUT) {
       // No reply, we give up:
-      delete res;
       return TRI_ERROR_CLUSTER_TIMEOUT;
     }
     if (res->status == CL_COMM_ERROR) {
       // This could be a broken connection or an Http error:
       if (! res->result || ! res->result->isComplete()) {
-        delete res;
         return TRI_ERROR_CLUSTER_CONNECTION_LOST;
       }
       // In this case a proper HTTP error was reported by the DBserver,
@@ -928,44 +905,37 @@ int getDocumentOnCoordinator (
     resultHeaders = res->result->getHeaderFields();
     resultBody.assign(res->result->getBody().c_str(),
                       res->result->getBody().length());
-    delete res;
     return TRI_ERROR_NO_ERROR;
   }
 
   // If we get here, the sharding attributes are not only _key, therefore
   // we have to contact everybody:
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headersCopy = new map<string, string>(headers);
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           reqType,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/"+
-                           StringUtils::urlEncode(it->first) + "/" + StringUtils::urlEncode(key) +
-                           revstr, 
-                           std::shared_ptr<std::string const>(), 
-                           headersCopy, 
-                           nullptr, 
-                           60.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headersCopy
+        (new std::map<std::string, std::string>(*headers));
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+         reqType,
+         "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/"+
+         StringUtils::urlEncode(p.first) + "/" + StringUtils::urlEncode(key) +
+         revstr, 
+         std::shared_ptr<std::string const>(), headersCopy, nullptr, 60.0);
   }
   // Now listen to the results:
   int count;
   int nrok = 0;
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait("", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code != triagens::rest::HttpResponse::NOT_FOUND ||
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait("", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code != triagens::rest::HttpResponse::NOT_FOUND ||
           (nrok == 0 && count == 1)) {
         nrok++;
-        responseCode = res->answer_code;
-        resultHeaders = res->answer->headers();
-        resultBody = string(res->answer->body(), res->answer->bodySize());
+        responseCode = res.answer_code;
+        resultHeaders = res.answer->headers();
+        resultBody = string(res.answer->body(), res.answer->bodySize());
       }
     }
-    delete res;
   }
 
   // Note that nrok is always at least 1!
@@ -985,7 +955,8 @@ static void insertIntoShardMap (ClusterInfo* ci,
   TRI_ASSERT(splitId.size() == 2);
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, splitId[0]);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, splitId[0]);
   if (collinfo->empty()) {
     THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND, "Collection not found: " + splitId[0]);
   }
@@ -1014,11 +985,11 @@ static void insertIntoShardMap (ClusterInfo* ci,
   else {
     // Sorry we do not know the responsible shard yet
     // Ask all of them
-    std::map<std::string, std::string> shardIds = collinfo->shardIds();
-    for (auto shard : shardIds) {
-      auto it = shardMap.find(shard.first);
+    auto shardList = ci->getShardList(collid);
+    for (auto const& shard : *shardList) {
+      auto it = shardMap.find(shard);
       if (it == shardMap.end()) {
-        shardMap.emplace(shard.first, std::vector<std::string>({splitId[1]}));
+        shardMap.emplace(shard, std::vector<std::string>({splitId[1]}));
       }
       else {
         it->second.push_back(splitId[1]);
@@ -1037,7 +1008,7 @@ static void insertIntoShardMap (ClusterInfo* ci,
 int getFilteredDocumentsOnCoordinator (
              std::string const& dbname,
              std::vector<traverser::TraverserExpression*> const& expressions, 
-             std::map<std::string, std::string> const& headers,
+             std::unique_ptr<std::map<std::string, std::string>>& headers,
              std::unordered_set<std::string>& documentIds,
              std::unordered_map<std::string, TRI_json_t*>& result) {
 
@@ -1050,14 +1021,14 @@ int getFilteredDocumentsOnCoordinator (
     insertIntoShardMap(ci, dbname, doc, shardRequestMap);
   }
 
-  ClusterCommResult* res;
   // Now start the request.
   // We do not have to care for shard attributes esp. shard by key.
   // If it is by key the key was only added to one key list, if not
   // it is contained multiple times.
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
   for (auto const& shard : shardRequestMap) {
-    std::unique_ptr<map<string, string>> headersCopy(new map<string, string>(headers));
+    std::unique_ptr<std::map<std::string, std::string>> headersCopy
+        (new std::map<std::string, std::string>(*headers));
     triagens::basics::Json reqBody(triagens::basics::Json::Object, 2);
     reqBody("collection", triagens::basics::Json(static_cast<std::string>(shard.first))); // ShardID is a string
     triagens::basics::Json keyList(triagens::basics::Json::Array, shard.second.size());
@@ -1074,22 +1045,18 @@ int getFilteredDocumentsOnCoordinator (
       }
       reqBody("filter", filter);
     }
-    std::shared_ptr<std::string> bodyString(new std::string(reqBody.toString()));
+    auto bodyString = std::make_shared<std::string>(reqBody.toString());
 
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + shard.first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/simple/lookup-by-keys",
-                           bodyString, 
-                           headersCopy.release(), 
-                           nullptr,
-                           60.0);
-    delete res;
+    cc->asyncRequest("", coordTransactionID, "shard:" + shard.first,
+       triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
+       "/_db/" + StringUtils::urlEncode(dbname) + "/_api/simple/lookup-by-keys",
+       bodyString, headersCopy, nullptr, 60.0);
   }
   // All requests send, now collect results.
   for (size_t i = 0; i < shardRequestMap.size(); ++i) {
-    res = cc->wait("", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      std::unique_ptr<TRI_json_t> resultBody(triagens::basics::JsonHelper::fromString(res->answer->body(), res->answer->bodySize()));
+    auto res = cc->wait("", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      std::unique_ptr<TRI_json_t> resultBody(triagens::basics::JsonHelper::fromString(res.answer->body(), res.answer->bodySize()));
       if (! TRI_IsObjectJson(resultBody.get())) {
         THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_INTERNAL, "Received an invalid result in cluster.");
       }
@@ -1126,7 +1093,6 @@ int getFilteredDocumentsOnCoordinator (
         }
       }
     }
-    delete res;
   }
 
   return TRI_ERROR_NO_ERROR;
@@ -1149,24 +1115,22 @@ int getAllDocumentsOnCoordinator (
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
   }
 
-  ClusterCommResult* res;
-
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headers = new map<string, string>;
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_GET,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document?collection=" +
-                           it->first + "&type=" + StringUtils::urlEncode(returnType), std::shared_ptr<std::string const>(), headers, nullptr, 3600.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+       triagens::rest::HttpRequest::HTTP_REQUEST_GET,
+       "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document?collection=" +
+       p.first + "&type=" + StringUtils::urlEncode(returnType),
+       std::shared_ptr<std::string const>(), headers, nullptr, 3600.0);
   }
   // Now listen to the results:
   int count;
@@ -1176,31 +1140,27 @@ int getAllDocumentsOnCoordinator (
   triagens::basics::Json result(triagens::basics::Json::Object);
   triagens::basics::Json documents(triagens::basics::Json::Array);
   
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait( "", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_TIMEOUT) {
-      delete res;
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait( "", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_TIMEOUT) {
       cc->drop( "", coordTransactionID, 0, "");
       return TRI_ERROR_CLUSTER_TIMEOUT;
     }
-    if (res->status == CL_COMM_ERROR || res->status == CL_COMM_DROPPED ||
-        res->answer_code == triagens::rest::HttpResponse::NOT_FOUND) {
-      delete res;
+    if (res.status == CL_COMM_ERROR || res.status == CL_COMM_DROPPED ||
+        res.answer_code == triagens::rest::HttpResponse::NOT_FOUND) {
       cc->drop( "", coordTransactionID, 0, "");
       return TRI_ERROR_INTERNAL;
     }
 
-    std::unique_ptr<TRI_json_t> shardResult(TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res->answer->body()));
+    std::unique_ptr<TRI_json_t> shardResult(TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res.answer->body()));
 
     if (shardResult == nullptr || ! TRI_IsObjectJson(shardResult.get())) {
-      delete res;
       return TRI_ERROR_INTERNAL;
     }
 
     auto docs = TRI_LookupObjectJson(shardResult.get(), "documents");
 
     if (! TRI_IsArrayJson(docs)) {
-      delete res;
       return TRI_ERROR_INTERNAL;
     }
 
@@ -1213,8 +1173,6 @@ int getAllDocumentsOnCoordinator (
       // this will transfer the ownership for the JSON into "documents"
       documents.transfer(doc);
     }
-
-    delete res;
   }
   
   result("documents", documents);
@@ -1261,15 +1219,13 @@ int getFilteredEdgesOnCoordinator (
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
   if (collinfo->empty()) {
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
   }
 
-  ClusterCommResult* res;
-
-  std::map<ShardID, ServerID> shards = collinfo->shardIds();
-  std::map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
   std::string queryParameters = "?vertex=" + StringUtils::urlEncode(vertex);
   if (direction == TRI_EDGE_IN) {
@@ -1278,7 +1234,7 @@ int getFilteredEdgesOnCoordinator (
   else if (direction == TRI_EDGE_OUT) {
     queryParameters += "&direction=out";
   }
-  std::shared_ptr<std::string> reqBodyString(new std::string);
+  auto reqBodyString = std::make_shared<std::string>();
   if (! expressions.empty()) {
     triagens::basics::Json body(Json::Array, expressions.size());
     for (auto& e : expressions) {
@@ -1288,13 +1244,14 @@ int getFilteredEdgesOnCoordinator (
     }
     reqBodyString->append(body.toString());
   }
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    std::map<std::string, std::string>* headers = new std::map<std::string, std::string>;
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/edges/" + it->first + queryParameters,
-                           reqBodyString, headers, nullptr, 3600.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first,
+       triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
+       "/_db/" + StringUtils::urlEncode(dbname) + "/_api/edges/" 
+           + p.first + queryParameters,
+       reqBodyString, headers, nullptr, 3600.0);
   }
   // Now listen to the results:
   int count;
@@ -1305,39 +1262,34 @@ int getFilteredEdgesOnCoordinator (
 
   triagens::basics::Json documents(triagens::basics::Json::Array);
   
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait( "", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_TIMEOUT) {
-      delete res;
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait( "", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_TIMEOUT) {
       cc->drop( "", coordTransactionID, 0, "");
       return TRI_ERROR_CLUSTER_TIMEOUT;
     }
-    if (res->status == CL_COMM_ERROR || res->status == CL_COMM_DROPPED) {
-      delete res;
+    if (res.status == CL_COMM_ERROR || res.status == CL_COMM_DROPPED) {
       cc->drop( "", coordTransactionID, 0, "");
       return TRI_ERROR_INTERNAL;
     }
-    if (res->status == CL_COMM_RECEIVED) {
+    if (res.status == CL_COMM_RECEIVED) {
     }
     
-    std::unique_ptr<TRI_json_t> shardResult(TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res->answer->body()));
+    std::unique_ptr<TRI_json_t> shardResult(TRI_JsonString(TRI_UNKNOWN_MEM_ZONE, res.answer->body()));
 
     if (shardResult == nullptr || ! TRI_IsObjectJson(shardResult.get())) {
-      delete res;
       return TRI_ERROR_INTERNAL;
     }
       
     bool const isError = triagens::basics::JsonHelper::checkAndGetBooleanValue(shardResult.get(), "error");
     if (isError) {
       // shared returned an error
-      delete res;
       return triagens::basics::JsonHelper::getNumericValue<int>(shardResult.get(), "errorNum", TRI_ERROR_INTERNAL);
     }
 
     auto docs = TRI_LookupObjectJson(shardResult.get(), "edges");
 
     if (! TRI_IsArrayJson(docs)) {
-      delete res;
       return TRI_ERROR_INTERNAL;
     }
 
@@ -1358,8 +1310,6 @@ int getFilteredEdgesOnCoordinator (
       filtered += triagens::basics::JsonHelper::getNumericValue<size_t>(stats, "filtered", 0);
       scannedIndex += triagens::basics::JsonHelper::getNumericValue<size_t>(stats, "scannedIndex", 0);
     }
-
-    delete res;
   }
   
   result("edges", documents);
@@ -1387,7 +1337,7 @@ int modifyDocumentOnCoordinator (
                  bool keepNull,   // only counts for isPatch == true
                  bool mergeObjects,   // only counts for isPatch == true
                  TRI_json_t* json,
-                 map<string, string> const& headers,
+                 std::unique_ptr<std::map<std::string, std::string>>& headers,
                  triagens::rest::HttpResponse::HttpResponseCode& responseCode,
                  map<string, string>& resultHeaders,
                  string& resultBody) {
@@ -1397,7 +1347,8 @@ int modifyDocumentOnCoordinator (
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
   if (collinfo->empty()) {
     TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
@@ -1441,7 +1392,6 @@ int modifyDocumentOnCoordinator (
   }
 
   // Some stuff to prepare cluster-internal requests:
-  ClusterCommResult* res;
   string revstr;
   if (rev != 0) {
     revstr = "&rev=" + StringUtils::itoa(rev);
@@ -1468,7 +1418,8 @@ int modifyDocumentOnCoordinator (
     policystr = "&policy=last";
   }
 
-  std::shared_ptr<std::string const> body(new std::string(JsonHelper::toString(json)));
+  auto body = std::make_shared<std::string const>
+      (std::string(JsonHelper::toString(json)));
   TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
 
   if (! isPatch ||
@@ -1478,21 +1429,20 @@ int modifyDocumentOnCoordinator (
     // sharding attributes
 
     // Send a synchronous request to that shard using ClusterComm:
-    res = cc->syncRequest("", TRI_NewTickServer(), "shard:" + shardID, reqType,
-                          "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/" +
-                          StringUtils::urlEncode(shardID) + "/" + StringUtils::urlEncode(key) +
-                          "?waitForSync=" + (waitForSync ? "true" : "false") +
-                          revstr + policystr, *(body.get()), headers, 60.0);
+    auto res = cc->syncRequest("", TRI_NewTickServer(),
+        "shard:" + shardID, reqType,
+        "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/" +
+        StringUtils::urlEncode(shardID) + "/" + StringUtils::urlEncode(key) +
+        "?waitForSync=" + (waitForSync ? "true" : "false") +
+        revstr + policystr, *(body.get()), *headers, 60.0);
 
     if (res->status == CL_COMM_TIMEOUT) {
       // No reply, we give up:
-      delete res;
       return TRI_ERROR_CLUSTER_TIMEOUT;
     }
     if (res->status == CL_COMM_ERROR) {
       // This could be a broken connection or an Http error:
       if (res->result == nullptr || ! res->result->isComplete()) {
-        delete res;
         return TRI_ERROR_CLUSTER_CONNECTION_LOST;
       }
       // In this case a proper HTTP error was reported by the DBserver,
@@ -1507,45 +1457,36 @@ int modifyDocumentOnCoordinator (
       resultHeaders = res->result->getHeaderFields();
       resultBody.assign(res->result->getBody().c_str(),
                         res->result->getBody().length());
-      delete res;
       return TRI_ERROR_NO_ERROR;
     }
-    delete res;
   }
 
   // If we get here, we have to do it the slow way and contact everybody:
-  map<ShardID, ServerID> shards = collinfo->shardIds();
-  map<ShardID, ServerID>::iterator it;
+  auto shards = collinfo->shardIds();
   CoordTransactionID coordTransactionID = TRI_NewTickServer();
-  for (it = shards.begin(); it != shards.end(); ++it) {
-    map<string, string>* headersCopy = new map<string, string>(headers);
-
-    res = cc->asyncRequest("", coordTransactionID, "shard:" + it->first,
-                           reqType,
-                           "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/"+
-                           StringUtils::urlEncode(it->first) + "/" + StringUtils::urlEncode(key) +
-                           "?waitForSync=" + (waitForSync ? "true" : "false") + revstr + policystr,
-                           body, 
-                           headersCopy, 
-                           nullptr, 
-                           60.0);
-    delete res;
+  for (auto const& p : *shards) {
+    std::unique_ptr<std::map<std::string, std::string>> headersCopy
+        (new std::map<std::string, std::string>(*headers));
+    cc->asyncRequest("", coordTransactionID, "shard:" + p.first, reqType,
+       "/_db/" + StringUtils::urlEncode(dbname) + "/_api/document/"+
+       StringUtils::urlEncode(p.first) + "/" + StringUtils::urlEncode(key) +
+       "?waitForSync=" + (waitForSync ? "true" : "false") + revstr + policystr,
+       body, headersCopy, nullptr, 60.0);
   }
   // Now listen to the results:
   int count;
   int nrok = 0;
-  for (count = (int) shards.size(); count > 0; count--) {
-    res = cc->wait("", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code != triagens::rest::HttpResponse::NOT_FOUND ||
+  for (count = (int) shards->size(); count > 0; count--) {
+    auto res = cc->wait("", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code != triagens::rest::HttpResponse::NOT_FOUND ||
           (nrok == 0 && count == 1)) {
         nrok++;
-        responseCode = res->answer_code;
-        resultHeaders = res->answer->headers();
-        resultBody = string(res->answer->body(), res->answer->bodySize());
+        responseCode = res.answer_code;
+        resultHeaders = res.answer->headers();
+        resultBody = string(res.answer->body(), res.answer->bodySize());
       }
     }
-    delete res;
   }
 
   // Note that nrok is always at least 1!
@@ -1576,7 +1517,8 @@ int createEdgeOnCoordinator (
   ClusterComm* cc = ClusterComm::instance();
 
   // First determine the collection ID from the name:
-  shared_ptr<CollectionInfo> collinfo = ci->getCollection(dbname, collname);
+  std::shared_ptr<CollectionInfo> collinfo
+      = ci->getCollection(dbname, collname);
   if (collinfo->empty()) {
     TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
     return TRI_ERROR_ARANGO_COLLECTION_NOT_FOUND;
@@ -1626,9 +1568,8 @@ int createEdgeOnCoordinator (
   TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, json);
 
   // Send a synchronous request to that shard using ClusterComm:
-  ClusterCommResult* res;
   map<string, string> headers;
-  res = cc->syncRequest("", TRI_NewTickServer(), "shard:" + shardID,
+  auto res = cc->syncRequest("", TRI_NewTickServer(), "shard:" + shardID,
                         triagens::rest::HttpRequest::HTTP_REQUEST_POST,
                         "/_db/" + dbname + "/_api/edge?collection=" +
                         StringUtils::urlEncode(shardID) + "&waitForSync=" +
@@ -1638,14 +1579,12 @@ int createEdgeOnCoordinator (
 
   if (res->status == CL_COMM_TIMEOUT) {
     // No reply, we give up:
-    delete res;
     return TRI_ERROR_CLUSTER_TIMEOUT;
   }
   if (res->status == CL_COMM_ERROR) {
     // This could be a broken connection or an Http error:
     if (res->result == nullptr || ! res->result->isComplete()) {
       // there is not result
-      delete res;
       return TRI_ERROR_CLUSTER_CONNECTION_LOST;
     }
     // In this case a proper HTTP error was reported by the DBserver,
@@ -1657,7 +1596,6 @@ int createEdgeOnCoordinator (
   resultHeaders = res->result->getHeaderFields();
   resultBody.assign(res->result->getBody().c_str(),
                     res->result->getBody().length());
-  delete res;
   return TRI_ERROR_NO_ERROR;
 }
 
@@ -1674,34 +1612,26 @@ int flushWalOnAllDBServers (bool waitForSync, bool waitForCollector) {
                (waitForSync ? "true" : "false") +
                "&waitForCollector=" +
                (waitForCollector ? "true" : "false");
-  ClusterCommResult* res;
-  std::shared_ptr<std::string const> body(new string);
+  auto body = std::make_shared<std::string const>();
   for (auto it = DBservers.begin(); it != DBservers.end(); ++it) {
-    map<string, string>* headers = new map<string, string>;
-
+    std::unique_ptr<std::map<std::string, std::string>> headers
+        (new std::map<std::string, std::string>());
     // set collection name (shard id)
-
-    res = cc->asyncRequest("", coordTransactionID, "server:" + *it,
-                           triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
-                           url, 
-                           body, 
-                           headers,
-                           nullptr, 
-                           120.0);
-    delete res;
+    cc->asyncRequest("", coordTransactionID, "server:" + *it,
+                     triagens::rest::HttpRequest::HTTP_REQUEST_PUT,
+                     url, body, headers, nullptr, 120.0);
   }
 
   // Now listen to the results:
   int count;
   int nrok = 0;
   for (count = (int) DBservers.size(); count > 0; count--) {
-    res = cc->wait( "", coordTransactionID, 0, "", 0.0);
-    if (res->status == CL_COMM_RECEIVED) {
-      if (res->answer_code == triagens::rest::HttpResponse::OK) {
+    auto res = cc->wait( "", coordTransactionID, 0, "", 0.0);
+    if (res.status == CL_COMM_RECEIVED) {
+      if (res.answer_code == triagens::rest::HttpResponse::OK) {
         nrok++;
       }
     }
-    delete res;
   }
 
   if (nrok != (int) DBservers.size()) {

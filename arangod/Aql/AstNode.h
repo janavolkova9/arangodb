@@ -266,6 +266,18 @@ namespace triagens {
       public:
 
 ////////////////////////////////////////////////////////////////////////////////
+/// @brief test if all members of a node are equality comparisons
+////////////////////////////////////////////////////////////////////////////////
+
+        bool isOnlyEqualityMatch () const;
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief computes a hash value for a value node
+////////////////////////////////////////////////////////////////////////////////
+
+        uint64_t hashValue (uint64_t) const;
+
+////////////////////////////////////////////////////////////////////////////////
 /// @brief dump the node (for debugging purposes)
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -941,6 +953,34 @@ namespace triagens {
     };
 
     int CompareAstNodes (AstNode const*, AstNode const*, bool);
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief less comparator for Ast value nodes
+////////////////////////////////////////////////////////////////////////////////
+
+    template<bool useUtf8>
+    struct AstNodeValueLess {    
+      inline bool operator() (AstNode const* lhs,
+                              AstNode const* rhs) const {
+
+        return CompareAstNodes(lhs, rhs, useUtf8) < 0;
+      }
+    };
+        
+    struct AstNodeValueHash {
+      inline size_t operator() (AstNode const* value) const {
+        return value->hashValue(0x12345678);
+      }
+    };
+        
+    struct AstNodeValueEqual {    
+      inline bool operator() (AstNode const* lhs,
+                              AstNode const* rhs) const {
+
+        return CompareAstNodes(lhs, rhs, false) == 0;
+      }
+    };
+
   }
 }
 

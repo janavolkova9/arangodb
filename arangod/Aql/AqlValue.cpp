@@ -154,7 +154,7 @@ AqlValue AqlValue::clone () const {
         }
       }
       catch (...) {
-        for (auto x : *c) {
+        for (auto& x : *c) {
           delete x;
         }
         delete c;
@@ -616,8 +616,7 @@ v8::Handle<v8::Value> AqlValue::toV8 (v8::Isolate* isolate,
     }
 
     case EMPTY: {
-      return v8::Null(isolate); // TODO: FIXME decide if we really want this...---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-      return v8::Undefined(isolate);
+      return v8::Null(isolate); 
     }
   }
       
@@ -693,8 +692,7 @@ Json AqlValue::toJson (triagens::arango::AqlTransaction* trx,
     }
 
     case EMPTY: {
-      return Json(Json::Null); // TODO FIXME: decide if we really want this...--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-      return triagens::basics::Json();
+      return Json(Json::Null);
     }
   }
 
@@ -1008,7 +1006,7 @@ AqlValue AqlValue::CreateFromBlocks (triagens::arango::AqlTransaction* trx,
     totalSize += (*it)->size();
   }
 
-  std::unique_ptr<Json> json(new Json(Json::Array, totalSize));
+  auto json = std::make_unique<Json>(Json::Array, totalSize);
 
   for (auto it = src.begin(); it != src.end(); ++it) {
     auto current = (*it);
@@ -1050,7 +1048,7 @@ AqlValue AqlValue::CreateFromBlocks (triagens::arango::AqlTransaction* trx,
     totalSize += (*it)->size();
   }
 
-  std::unique_ptr<Json> json(new Json(Json::Array, totalSize));
+  auto json = std::make_unique<Json>(Json::Array, totalSize);
 
   for (auto it = src.begin(); it != src.end(); ++it) {
     auto current = (*it);

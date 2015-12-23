@@ -534,7 +534,6 @@ static int DumpCollection (int fd,
     int res = TRI_ERROR_NO_ERROR;  // just to please the compiler
     bool checkMore = false;
     bool found;
-    uint64_t tick;
 
     // TODO: fix hard-coded headers
     string header = response->getHeaderField("x-arango-replication-checkmore", found);
@@ -548,7 +547,7 @@ static int DumpCollection (int fd,
         header = response->getHeaderField("x-arango-replication-lastincluded", found);
 
         if (found) {
-          tick = StringUtils::uint64(header);
+          uint64_t tick = StringUtils::uint64(header);
 
           if (tick > fromTick) {
             fromTick = tick;
@@ -704,7 +703,7 @@ static int RunDump (string& errorMsg) {
       TRI_UnlinkFile(fileName.c_str());
     }
 
-    fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
+    fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR | TRI_O_CLOEXEC, S_IRUSR | S_IWUSR);
 
     if (fd < 0) {
       TRI_FreeJson(TRI_UNKNOWN_MEM_ZONE, meta);
@@ -773,7 +772,7 @@ static int RunDump (string& errorMsg) {
       continue;
     }
 
-    if (restrictList.size() > 0 &&
+    if (! restrictList.empty() &&
         restrictList.find(name) == restrictList.end()) {
       // collection name not in list
       continue;
@@ -800,7 +799,7 @@ static int RunDump (string& errorMsg) {
         TRI_UnlinkFile(fileName.c_str());
       }
 
-      fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
+      fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR | TRI_O_CLOEXEC, S_IRUSR | S_IWUSR);
 
       if (fd < 0) {
         errorMsg = "cannot write to file '" + fileName + "'";
@@ -833,7 +832,7 @@ static int RunDump (string& errorMsg) {
         TRI_UnlinkFile(fileName.c_str());
       }
 
-      fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
+      fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR | TRI_O_CLOEXEC, S_IRUSR | S_IWUSR);
 
       if (fd < 0) {
         errorMsg = "cannot write to file '" + fileName + "'";
@@ -905,7 +904,6 @@ static int DumpShard (int fd,
     int res = TRI_ERROR_NO_ERROR;   // just to please the compiler
     bool checkMore = false;
     bool found;
-    uint64_t tick;
 
     // TODO: fix hard-coded headers
     std::string header = response->getHeaderField("x-arango-replication-checkmore", found);
@@ -919,7 +917,7 @@ static int DumpShard (int fd,
         header = response->getHeaderField("x-arango-replication-lastincluded", found);
 
         if (found) {
-          tick = StringUtils::uint64(header);
+          uint64_t tick = StringUtils::uint64(header);
 
           if (tick > fromTick) {
             fromTick = tick;
@@ -1055,7 +1053,7 @@ static int RunClusterDump (string& errorMsg) {
       continue;
     }
 
-    if (restrictList.size() > 0 &&
+    if (! restrictList.empty() &&
         restrictList.find(name) == restrictList.end()) {
       // collection name not in list
       continue;
@@ -1081,7 +1079,7 @@ static int RunClusterDump (string& errorMsg) {
         TRI_UnlinkFile(fileName.c_str());
       }
 
-      fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
+      fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR | TRI_O_CLOEXEC, S_IRUSR | S_IWUSR);
 
       if (fd < 0) {
         errorMsg = "cannot write to file '" + fileName + "'";
@@ -1108,7 +1106,22 @@ static int RunClusterDump (string& errorMsg) {
       // First we have to go through all the shards, what are they?
       TRI_json_t const* shards = JsonHelper::getObjectElement(parameters,
                                                              "shards");
-      map<string, string> shardTab = JsonHelper::stringObject(shards);
+      map<string, string> shardTab;  // map from shardId to servers
+      size_t const n = TRI_LengthVectorJson(shards);
+
+      for (size_t i = 0; i < n; i += 2) {
+        auto k = static_cast<TRI_json_t const*>
+            (TRI_AtVector(&shards->_value._objects, i));
+        auto v = static_cast<TRI_json_t const*>
+            (TRI_AtVector(&shards->_value._objects, i+1));
+
+        if (JsonHelper::isString(k) && JsonHelper::isArray(v)) {
+          std::string const key = std::string(k->_value._string.data,
+                                              k->_value._string.length - 1);
+          std::vector<std::string> servers = JsonHelper::stringArray(v);
+          shardTab.emplace(key, servers[0]);
+        }
+      }
       // This is now a map from shardIDs to DBservers
 
       // Now set up the output file:
@@ -1120,7 +1133,7 @@ static int RunClusterDump (string& errorMsg) {
         TRI_UnlinkFile(fileName.c_str());
       }
 
-      int fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
+      int fd = TRI_CREATE(fileName.c_str(), O_CREAT | O_EXCL | O_RDWR | TRI_O_CLOEXEC, S_IRUSR | S_IWUSR);
 
       if (fd < 0) {
         errorMsg = "cannot write to file '" + fileName + "'";
@@ -1129,7 +1142,7 @@ static int RunClusterDump (string& errorMsg) {
       }
 
       map<string, string>::iterator it;
-      for (it = shardTab.begin(); it != shardTab.end(); it++) {
+      for (it = shardTab.begin(); it != shardTab.end(); ++it) {
         string shardName = it->first;
         string DBserver = it->second;
         if (Progress) {
@@ -1288,7 +1301,7 @@ int main (int argc, char* argv[]) {
   Client->setLocationRewriter(0, &rewriteLocation);
   Client->setUserNamePassword("/", BaseClient.username(), BaseClient.password());
 
-  const string versionString = GetArangoVersion();
+  std::string const versionString = GetArangoVersion();
 
   if (! Connection->isConnected()) {
     cerr << "Could not connect to endpoint '" << BaseClient.endpointString()

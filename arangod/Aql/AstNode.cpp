@@ -34,6 +34,7 @@
 #include "Aql/Query.h"
 #include "Aql/Scopes.h"
 #include "Aql/types.h"
+#include "Basics/fasthash.h"
 #include "Basics/JsonHelper.h"
 #include "Basics/json-utilities.h"
 #include "Basics/StringBuffer.h"
@@ -562,6 +563,18 @@ AstNode::AstNode (Ast* ast,
       setIntValue(JsonHelper::checkAndGetNumericValue<int64_t>(json.json(), "levels"));
       break;
     }
+    case NODE_TYPE_OPERATOR_BINARY_IN: 
+    case NODE_TYPE_OPERATOR_BINARY_NIN: {
+      setBoolValue(JsonHelper::getBooleanValue(json.json(), "sorted", false));
+      break;
+    }
+    case NODE_TYPE_ARRAY: {
+      bool sorted = JsonHelper::getBooleanValue(json.json(), "sorted", false);
+      if (sorted) {
+        setFlag(DETERMINED_SORTED, VALUE_SORTED);
+      }
+      break;
+    }
     case NODE_TYPE_OBJECT:
     case NODE_TYPE_ROOT:
     case NODE_TYPE_FOR:
@@ -596,14 +609,11 @@ AstNode::AstNode (Ast* ast,
     case NODE_TYPE_OPERATOR_BINARY_LE:
     case NODE_TYPE_OPERATOR_BINARY_GT:
     case NODE_TYPE_OPERATOR_BINARY_GE:
-    case NODE_TYPE_OPERATOR_BINARY_IN:
-    case NODE_TYPE_OPERATOR_BINARY_NIN:
     case NODE_TYPE_OPERATOR_TERNARY:
     case NODE_TYPE_SUBQUERY:
     case NODE_TYPE_BOUND_ATTRIBUTE_ACCESS:
     case NODE_TYPE_INDEXED_ACCESS:
     case NODE_TYPE_ITERATOR:
-    case NODE_TYPE_ARRAY:
     case NODE_TYPE_RANGE:
     case NODE_TYPE_NOP:
     case NODE_TYPE_CALCULATED_OBJECT_ELEMENT:
@@ -623,6 +633,7 @@ AstNode::AstNode (Ast* ast,
 
   if (subNodes.isArray()) {
     size_t const len = subNodes.size();
+
     for (size_t i = 0; i < len; i++) {
       Json subNode(subNodes.at(i));
       int type = JsonHelper::checkAndGetNumericValue<int>(subNode.json(), "typeID");
@@ -794,6 +805,75 @@ AstNode::~AstNode () {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                    public methods
 // -----------------------------------------------------------------------------
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief test if all members of a node are equality comparisons
+////////////////////////////////////////////////////////////////////////////////
+
+bool AstNode::isOnlyEqualityMatch () const {
+  if (type != NODE_TYPE_OPERATOR_BINARY_AND &&
+      type != NODE_TYPE_OPERATOR_NARY_AND) {
+    return false;
+  }
+   
+  for (size_t i = 0; i < numMembers(); ++i) {
+    auto op = getMember(i);
+    if (op->type != triagens::aql::NODE_TYPE_OPERATOR_BINARY_EQ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief computes a hash value for a value node
+////////////////////////////////////////////////////////////////////////////////
+
+uint64_t AstNode::hashValue (uint64_t hash) const {
+  if (type == NODE_TYPE_VALUE) {
+    switch (value.type) {
+      case VALUE_TYPE_NULL:
+        return fasthash64(static_cast<const void*>("null"), 4, hash);
+      case VALUE_TYPE_BOOL:
+        if (value.value._bool) {
+          return fasthash64(static_cast<const void*>("true"), 4, hash);
+        }
+        return fasthash64(static_cast<const void*>("false"), 5, hash);
+      case VALUE_TYPE_INT:
+        return fasthash64(static_cast<const void*>(&value.value._int), sizeof(value.value._int), hash);
+      case VALUE_TYPE_DOUBLE:
+        return fasthash64(static_cast<const void*>(&value.value._double), sizeof(value.value._double), hash);
+      case VALUE_TYPE_STRING:
+        return fasthash64(static_cast<const void*>(getStringValue()), getStringLength(), hash);
+    }
+  }
+
+  size_t const n = numMembers();
+
+  if (type == NODE_TYPE_ARRAY) {
+    hash = fasthash64(static_cast<const void*>("array"), 5, hash);
+    for (size_t i = 0;  i < n;  ++i) {
+      hash = getMemberUnchecked(i)->hashValue(hash);
+    }
+    return hash;
+  }
+
+  if (type == NODE_TYPE_OBJECT) {
+    hash = fasthash64(static_cast<const void*>("object"), 6, hash);
+    for (size_t i = 0;  i < n;  ++i) {
+      auto sub = getMemberUnchecked(i);
+      if (sub != nullptr) {
+        hash = fasthash64(static_cast<const void*>(sub->getStringValue()), sub->getStringLength(), hash);
+        hash = sub->getMember(0)->hashValue(hash);
+      }
+    }
+    return hash;
+  }
+
+  TRI_ASSERT(false);
+  return 0;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief dump the node (for debugging purposes)
@@ -1065,6 +1145,13 @@ TRI_json_t* AstNode::toJson (TRI_memory_zone_t* zone,
     // arguments are exported via node members
   }
 
+  if (type == NODE_TYPE_ARRAY) {
+    if (hasFlag(DETERMINED_SORTED)) {
+      // transport information about a node's sortedness
+      TRI_Insert3ObjectJson(zone, node, "sorted", TRI_CreateBooleanJson(TRI_UNKNOWN_MEM_ZONE, hasFlag(VALUE_SORTED)));
+    }
+  }
+
   if (type == NODE_TYPE_VALUE) {
     // dump value of "value" node
     auto v = toJsonValue(zone);
@@ -1081,6 +1168,11 @@ TRI_json_t* AstNode::toJson (TRI_memory_zone_t* zone,
       TRI_Insert3ObjectJson(zone, node, "vType", TRI_CreateStringCopyJson(zone, typeStr.c_str(), typeStr.size()));
       TRI_Insert3ObjectJson(zone, node, "vTypeID", TRI_CreateNumberJson(zone, static_cast<int>(value.type)));
     }
+  }
+
+  if (type == NODE_TYPE_OPERATOR_BINARY_IN ||
+      type == NODE_TYPE_OPERATOR_BINARY_NIN) {
+    TRI_Insert3ObjectJson(zone, node, "sorted", TRI_CreateBooleanJson(TRI_UNKNOWN_MEM_ZONE, getBoolValue()));
   }
 
   if (type == NODE_TYPE_VARIABLE ||
@@ -1133,16 +1225,14 @@ TRI_json_t* AstNode::toJson (TRI_memory_zone_t* zone,
   return node;
 }
 
-
-
-
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief iterates whether a node of type "searchType" can be found
 ////////////////////////////////////////////////////////////////////////////////
-bool AstNode::containsNodeType (AstNodeType searchType) const {
 
-  if (type == searchType)
+bool AstNode::containsNodeType (AstNodeType searchType) const {
+  if (type == searchType) {
     return true;
+  }
 
   // iterate sub-nodes
   size_t const n = members.size();
@@ -1150,17 +1240,16 @@ bool AstNode::containsNodeType (AstNodeType searchType) const {
   if (n > 0) {
     for (size_t i = 0; i < n; ++i) {
       AstNode* member = getMemberUnchecked(i);
-      if (member != nullptr) {
-        if (member->containsNodeType(searchType)) {
-          return true;
-        }
+
+      if (member != nullptr &&
+          member->containsNodeType(searchType)) {
+        return true;
       }
     }
   }
 
   return false;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief convert the node's value to a boolean value
@@ -1186,7 +1275,7 @@ AstNode* AstNode::castToBool (Ast* ast) {
       case VALUE_TYPE_DOUBLE:
         return ast->createNodeValueBool(value.value._double != 0.0);
       case VALUE_TYPE_STRING:
-        return ast->createNodeValueBool(*(value.value._string) != '\0');
+        return ast->createNodeValueBool(value.length > 0);
       default: {
       }
     }
@@ -2123,7 +2212,7 @@ void AstNode::stringify (triagens::basics::StringBuffer* buffer,
     auto member = getMember(0);
     member->stringify(buffer, verbose, failIfLong);
     buffer->appendChar('.');
-    buffer->appendText(getStringValue());
+    buffer->appendText(getStringValue(), getStringLength());
     return;
   }
 
@@ -2138,7 +2227,7 @@ void AstNode::stringify (triagens::basics::StringBuffer* buffer,
   if (type == NODE_TYPE_PARAMETER) {
     // not used by V8
     buffer->appendChar('@');
-    buffer->appendText(getStringValue());
+    buffer->appendText(getStringValue(), getStringLength());
     return;
   }
     

@@ -227,6 +227,61 @@
       window.App.notificationList.add({title:title, content: content, info: info, type: 'error'});
     },
 
+    openDocEditor: function (id, type, callback) {
+      var ids = id.split("/"),
+      self = this;
+
+      var docFrameView = new window.DocumentView({
+        collection: window.App.arangoDocumentStore
+      });
+
+      docFrameView.breadcrumb = function(){};
+
+      docFrameView.colid = ids[0];
+      docFrameView.docid = ids[1];
+
+      docFrameView.el = '.arangoFrame .innerDiv';
+      docFrameView.render();
+      docFrameView.setType(type);
+
+      //remove header
+      $('.arangoFrame .headerBar').remove();
+      //append close button
+      $('.arangoFrame .outerDiv').prepend('<i class="fa fa-times"></i>');
+      //add close events
+      $('.arangoFrame .outerDiv').click(function() {
+        self.closeDocEditor();
+      });
+      $('.arangoFrame .innerDiv').click(function(e) {
+        e.stopPropagation();
+      });
+      $('.fa-times').click(function() {
+        self.closeDocEditor();
+      });
+
+      $('.arangoFrame').show();
+       
+      docFrameView.customView = true;
+      docFrameView.customDeleteFunction = function() {
+        window.modalView.hide();
+        $('.arangoFrame').hide();
+        //callback();
+      };
+
+      $('.arangoFrame #deleteDocumentButton').click(function(){
+        docFrameView.deleteDocumentModal();
+      });
+      $('.arangoFrame #saveDocumentButton').click(function(){
+        docFrameView.saveDocument();
+      });
+      $('.arangoFrame #deleteDocumentButton').css('display', 'none');
+    },
+
+    closeDocEditor: function () {
+      $('.arangoFrame .outerDiv .fa-times').remove();
+      $('.arangoFrame').hide();
+    },
+
     getRandomToken: function () {
       return Math.round(new Date().getTime());
     },
@@ -2284,8 +2339,11 @@ window.StatisticsCollection = Backbone.Collection.extend({
         }
       }
 
+      var origin = window.location.href.split("/"), 
+      preUrl = origin[0] + '//' + origin[2] + '/' + origin[3] + '/_system/' + origin[5] + '/' + origin[6] + '/';
+
       $.ajax(
-        url + urlParams,
+        preUrl + url + urlParams,
         {async: true}
       ).done(
         function (d) {
@@ -2869,6 +2927,27 @@ window.StatisticsCollection = Backbone.Collection.extend({
       if (events) {
         this.events = events;
         this.delegateEvents();
+      }
+
+      if ($('#accordion2')) {
+        $('#accordion2').bind("click", function() {
+          if ($('#collapseOne').is(":visible")) {
+            $('#collapseOne').hide();
+            setTimeout(function() {
+              $('.accordion-toggle').addClass('collapsed');
+            }, 100);
+          }
+          else {
+            $('#collapseOne').show();
+            setTimeout(function() {
+              $('.accordion-toggle').removeClass('collapsed');
+            }, 100);
+          }
+        });
+        $('#collapseOne').hide();
+        setTimeout(function() {
+          $('.accordion-toggle').addClass('collapsed');
+        }, 100);
       }
 
       $("#modal-dialog").modal("show");

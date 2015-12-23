@@ -245,12 +245,33 @@ bool ConditionPart::isCoveredBy (ConditionPart const& other) const {
             }
           }
         }
-
-        return true;
       }
+      else {
+        std::unordered_set<AstNode const*, AstNodeValueHash, AstNodeValueEqual> values(
+          512, 
+          AstNodeValueHash(), 
+          AstNodeValueEqual()
+        );
+
+        for (size_t i = 0; i < n2; ++i) {
+          values.emplace(other.valueNode->getMemberUnchecked(i));
+        }
+
+        for (size_t i = 0; i < n1; ++i) {
+          auto node = valueNode->getMemberUnchecked(i);
+          if (values.find(node) == values.end()) {
+            return false;
+          }
+        }
+      }
+
+      return true;
     }
+
+    return false;
   }
-  else if (isExpanded && 
+
+  if (isExpanded && 
            other.isExpanded &&
            operatorType == NODE_TYPE_OPERATOR_BINARY_IN &&
            other.operatorType == NODE_TYPE_OPERATOR_BINARY_IN &&
@@ -258,6 +279,7 @@ bool ConditionPart::isCoveredBy (ConditionPart const& other) const {
     if (CompareAstNodes(other.valueNode, valueNode, false) == 0) {
       return true;
     }
+
     return false;
   }
 
@@ -315,7 +337,7 @@ Condition::~Condition () {
         
 Condition* Condition::fromJson (ExecutionPlan* plan,
                                 triagens::basics::Json const& json) {
-  std::unique_ptr<Condition> condition(new Condition(plan->getAst()));
+  auto condition = std::make_unique<Condition>(plan->getAst());
 
   if (json.isObject() && json.members() != 0) {
     // note: the AST is responsible for freeing the AstNode later!
@@ -334,7 +356,7 @@ Condition* Condition::fromJson (ExecutionPlan* plan,
 ////////////////////////////////////////////////////////////////////////////////
 
 Condition* Condition::clone () const {
-  std::unique_ptr<Condition> copy(new Condition(_ast));
+  auto copy = std::make_unique<Condition>(_ast);
 
   if (_root != nullptr) {
     copy->_root = _root->clone(_ast); 
@@ -487,8 +509,9 @@ std::pair<bool, bool> Condition::findIndexForAndNode (size_t position,
   // We can only iterate through a proper DNF
   auto node = _root->getMember(position);
   TRI_ASSERT(node->type == NODE_TYPE_OPERATOR_NARY_AND);
- 
-  size_t const itemsInIndex = colNode->collection()->count(); 
+
+  // number of items in collection 
+  size_t const itemsInCollection = colNode->collection()->count(); 
 
   Index const* bestIndex  = nullptr;
   double bestCost         = 0.0;
@@ -500,16 +523,19 @@ std::pair<bool, bool> Condition::findIndexForAndNode (size_t position,
   for (auto const& idx : indexes) {
     double filterCost = 0.0;
     double sortCost   = 0.0;
+    size_t itemsInIndex = itemsInCollection;
 
     bool supportsFilter = false;
     bool supportsSort   = false;
-    
+
     // check if the index supports the filter expression
     double estimatedCost;
     size_t estimatedItems;
     if (idx->supportsFilterCondition(node, reference, itemsInIndex, estimatedItems, estimatedCost)) {
       // index supports the filter condition
       filterCost = estimatedCost;
+      // this reduces the number of items left
+      itemsInIndex = estimatedItems;
       supportsFilter = true;
     }
     else {
@@ -517,9 +543,9 @@ std::pair<bool, bool> Condition::findIndexForAndNode (size_t position,
       filterCost = itemsInIndex * 1.5;
     }
 
-    if (! sortCondition->isEmpty() &&
-        sortCondition->isOnlyAttributeAccess() &&
-        sortCondition->isUnidirectional()) {
+    bool const isOnlyAttributeAccess = (! sortCondition->isEmpty() && sortCondition->isOnlyAttributeAccess());
+
+    if (sortCondition->isUnidirectional()) {
       // only go in here if we actually have a sort condition and it can in
       // general be supported by an index. for this, a sort condition must not
       // be empty, must consist only of attribute access, and all attributes
@@ -527,6 +553,21 @@ std::pair<bool, bool> Condition::findIndexForAndNode (size_t position,
       if (indexSupportsSort(idx, reference, sortCondition, itemsInIndex, sortCost)) {
         supportsSort = true;
       }
+    }
+
+    if (! supportsSort && 
+        isOnlyAttributeAccess &&
+        node->isOnlyEqualityMatch()) {
+      // index cannot be used for sorting, but the filter condition consists only of equality lookups (==)
+      // now check if the index fields are the same as the sort condition fields
+      // e.g. FILTER c.value1 == 1 && c.value2 == 42 SORT c.value1, c.value2
+      size_t coveredFields = sortCondition->coveredAttributes(reference, idx->fields);
+
+      if (coveredFields == sortCondition->numAttributes() &&
+          (idx->isSorted() || idx->fields.size() == sortCondition->numAttributes())) {
+        // no sorting needed
+        sortCost = 0.0;
+      }     
     }
 
     // std::cout << "INDEX: " << idx << ", SUPPORTS FILTER: " << supportsFilter << ", SUPPORTS SORT: " << supportsSort << ", FILTER COST: " << filterCost << ", SORT COST: " << sortCost << "\n";
@@ -607,8 +648,8 @@ void Condition::normalize () {
 /// @brief removes condition parts from another
 ////////////////////////////////////////////////////////////////////////////////
 
-AstNode const* Condition::removeIndexCondition (Variable const* variable,
-                                                AstNode const* other) {
+AstNode* Condition::removeIndexCondition (Variable const* variable,
+                                          AstNode* other) {
   if (_root == nullptr || other == nullptr) {
     return _root;
   } 
@@ -824,7 +865,7 @@ bool Condition::sortOrs (Variable const* variable,
           result.first == variable &&
           (operand->type != NODE_TYPE_OPERATOR_BINARY_IN || rhs->isArray())) {
         // create the condition data struct on the heap
-        std::unique_ptr<ConditionData> data(new ConditionData(sub, usedIndexes[i])); 
+        auto data = std::make_unique<ConditionData>(sub, usedIndexes[i]); 
         // push it into an owning vector
         conditionData.emplace_back(data.get());
         // vector is now responsible for data
@@ -842,7 +883,7 @@ bool Condition::sortOrs (Variable const* variable,
           rhs->isAttributeAccessForVariable(result) &&
           result.first == variable) { 
         // create the condition data struct on the heap
-        std::unique_ptr<ConditionData> data(new ConditionData(sub, usedIndexes[i])); 
+        auto data = std::make_unique<ConditionData>(sub, usedIndexes[i]); 
         // push it into an owning vector
         conditionData.emplace_back(data.get());
         // vector is now responsible for data

@@ -43,42 +43,28 @@ namespace triagens {
     class SimpleTraverserExpression : public triagens::arango::traverser::TraverserExpression {
 
       public:
-        triagens::aql::AstNode const*  toEvaluate;
+
+        triagens::aql::AstNode*        compareToNode;
+
         triagens::aql::Expression*     expression;
       
-        SimpleTraverserExpression (
-          bool isEdgeAccess,
-          triagens::aql::AstNodeType comparisonType,
-          triagens::aql::AstNode const* varAccess,
-          triagens::aql::AstNode const* ptoEvaluate
-        ) : triagens::arango::traverser::TraverserExpression(isEdgeAccess,
-                                                             comparisonType,
-                                                             varAccess),
-            toEvaluate(ptoEvaluate),
-            expression(nullptr) {
+        SimpleTraverserExpression (bool isEdgeAccess,
+                                   triagens::aql::AstNodeType comparisonType,
+                                   triagens::aql::AstNode const* varAccess,
+                                   triagens::aql::AstNode* compareToNode)
+        : triagens::arango::traverser::TraverserExpression(isEdgeAccess,
+                                                           comparisonType,
+                                                           varAccess),
+          compareToNode(compareToNode),
+          expression(nullptr) {
         }
 
-        ~SimpleTraverserExpression () {
-          if (expression != nullptr) {
-            delete expression;
-          }
-        }
+        SimpleTraverserExpression (triagens::aql::Ast* ast, triagens::basics::Json j);
+
+        ~SimpleTraverserExpression ();
 
         void toJson (triagens::basics::Json& json,
-                     TRI_memory_zone_t* zone) const {
-          auto op = triagens::aql::AstNode::Operators.find(comparisonType);
-          
-          if (op == triagens::aql::AstNode::Operators.end()) {
-            THROW_ARANGO_EXCEPTION_MESSAGE(TRI_ERROR_QUERY_PARSE, "invalid operator for simpleTraverserExpression");
-          }
-          std::string const operatorStr = op->second;
-
-          json("isEdgeAccess", triagens::basics::Json(isEdgeAccess))
-              ("comparisonType", triagens::basics::Json(operatorStr))
-              ("varAccess", varAccess->toJson(zone, true))
-              ("compareTo", toEvaluate->toJson(zone, true));
-        }
-
+                     TRI_memory_zone_t* zone) const;
     };
 
 
@@ -193,7 +179,7 @@ namespace triagens {
 ////////////////////////////////////////////////////////////////////////////////
 
         void getVariablesUsedHere (std::unordered_set<Variable const*>& result) const override final {
-          for (auto condVar : _conditionVariables) {
+          for (auto const& condVar : _conditionVariables) {
             result.emplace(condVar);
           }
           if (usesInVariable()) {
@@ -321,22 +307,6 @@ namespace triagens {
         }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief id of the calculation node that executes a filter for this query:
-////////////////////////////////////////////////////////////////////////////////
-
-        void setCalculationNodeId(size_t const id) {
-          _CalculationNodeId = id;
-        }
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief id of the calculation node that executes a filter for this query:
-////////////////////////////////////////////////////////////////////////////////
-
-        size_t getCalculationNodeId() const {
-          return _CalculationNodeId;
-        }
-
-////////////////////////////////////////////////////////////////////////////////
 /// @brief remember the condition to execute for early traversal abortion.
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -354,13 +324,13 @@ namespace triagens {
 /// @brief which variable? -1 none, 0 Edge, 1 Vertex, 2 path
 ////////////////////////////////////////////////////////////////////////////////
 
-        int checkIsOutVariable(size_t variableId);
+        int checkIsOutVariable (size_t variableId) const;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief check whether an access is inside the specified range
 ////////////////////////////////////////////////////////////////////////////////
 
-        bool isInRange(uint64_t thisIndex, bool isEdge) {
+        bool isInRange (uint64_t thisIndex, bool isEdge) const {
           if (isEdge) {
             return (thisIndex < _maxDepth);
           }
@@ -371,7 +341,7 @@ namespace triagens {
 /// @brief check whecher min..max actualy span a range
 ////////////////////////////////////////////////////////////////////////////////
 
-        bool isRangeValid() {
+        bool isRangeValid() const {
           return _maxDepth >= _minDepth;
         }
 
@@ -379,11 +349,11 @@ namespace triagens {
 /// @brief Remember a simple comparator filter
 ////////////////////////////////////////////////////////////////////////////////
 
-        void storeSimpleExpression(bool isEdgeAccess,
-                                   size_t indexAccess,
-                                   AstNodeType comparisonType,
-                                   AstNode const* varAccess,
-                                   AstNode const* compareTo);
+        void storeSimpleExpression (bool isEdgeAccess,
+                                    size_t indexAccess,
+                                    AstNodeType comparisonType,
+                                    AstNode const* varAccess,
+                                    AstNode* compareToNode);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief Returns a regerence to the simple traverser expressions
@@ -465,18 +435,11 @@ namespace triagens {
 
         std::vector<std::string> _edgeColls;
 
-
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief our graph...
 ////////////////////////////////////////////////////////////////////////////////
 
         Graph const* _graphObj;
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief id of the calculation node that executes a filter for this query:
-////////////////////////////////////////////////////////////////////////////////
-
-        size_t _CalculationNodeId;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief early abort traversal conditions:
@@ -492,6 +455,7 @@ namespace triagens {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief store a simple comparator filter
+/// one vector of TraverserExpressions per matchdepth (size_t)
 ////////////////////////////////////////////////////////////////////////////////
 
         std::unordered_map<size_t, std::vector<triagens::arango::traverser::TraverserExpression*>> _expressions;

@@ -48,21 +48,21 @@ namespace triagens {
           : _plan(plan),
             _variableDefinitions(),
             _planAltered(planAltered) {
-        };
+        }
 
         ~TraversalConditionFinder () {
         }
 
         bool before (ExecutionNode*) override final;
 
-        bool enterSubquery (ExecutionNode*, ExecutionNode*) final;
+        bool enterSubquery (ExecutionNode*, ExecutionNode*) override final;
 
       private:
 
         ExecutionPlan*                                          _plan;
         std::unordered_map<VariableId, CalculationNode const*>  _variableDefinitions;
         std::unordered_map<VariableId, ExecutionNode const*>    _filters;
-        bool *                                                  _planAltered;
+        bool*                                                   _planAltered;
     
     };
   }

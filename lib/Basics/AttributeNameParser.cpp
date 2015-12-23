@@ -62,6 +62,25 @@ bool triagens::basics::AttributeName::isIdentical (std::vector<AttributeName> co
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// @brief compare two attribute name vectors and return true if their names
+/// matches
+////////////////////////////////////////////////////////////////////////////////
+
+bool triagens::basics::AttributeName::namesMatch (std::vector<AttributeName> const& lhs,
+                                                  std::vector<AttributeName> const& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  
+  for (size_t i = 0; i < lhs.size(); ++i) {
+    if (lhs[i].name != rhs[i].name) {
+      return false;
+    } 
+  }
+  return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// @brief compare two attribute name vectors
 ////////////////////////////////////////////////////////////////////////////////
       
@@ -94,7 +113,7 @@ void triagens::basics::TRI_ParseAttributeString (std::string const& input,
           || input[pos + 1] != '*'
           || input[pos + 2] != ']'
           || (length - pos > 3 && input[pos + 3] != '.')) {
-        THROW_ARANGO_EXCEPTION(TRI_ERROR_ARANGO_PARSER_FAILED);
+        THROW_ARANGO_EXCEPTION(TRI_ERROR_ARANGO_ATTRIBUTE_PARSER_FAILED);
       }
       result.emplace_back(input.substr(parsedUntil, pos - parsedUntil), true);
       pos += 4;
