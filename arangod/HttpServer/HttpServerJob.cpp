@@ -5,7 +5,7 @@
 ///
 /// DISCLAIMER
 ///
-/// Copyright 2014-2015 ArangoDB GmbH, Cologne, Germany
+/// Copyright 2014-2016 ArangoDB GmbH, Cologne, Germany
 /// Copyright 2004-2014 triAGENS GmbH, Cologne, Germany
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
 ///
 /// @author Dr. Frank Celler
 /// @author Achim Brandt
-/// @author Copyright 2014-2015, ArangoDB GmbH, Cologne, Germany
+/// @author Copyright 2014-2016, ArangoDB GmbH, Cologne, Germany
 /// @author Copyright 2009-2014, triAGENS GmbH, Cologne, Germany
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -56,8 +56,9 @@ using namespace std;
 ////////////////////////////////////////////////////////////////////////////////
 
 HttpServerJob::HttpServerJob(HttpServer* server,
-                             WorkItem::uptr<HttpHandler>& handler)
-    : Job("HttpServerJob"), _server(server) {
+                             WorkItem::uptr<HttpHandler>& handler,
+                             bool isAsync)
+  : Job("HttpServerJob"), _server(server), _isAsync(isAsync) {
   _handler.swap(handler);
 }
 
@@ -96,18 +97,15 @@ void HttpServerJob::work() {
 
   LOG_TRACE("finished job %p", (void*)this);
 
-  /* TODO(fc) XXXX
-  if (!isDetached()) {
-  */
-  std::unique_ptr<TaskData> data(new TaskData());
-  data->_taskId = _handler->taskId();
-  data->_loop = _handler->eventLoop();
-  data->_type = HttpCommTask::TASK_DATA_RESPONSE;  // TODO(fc) XXX this should
-                                                   // be TaskData::
-  data->_response = _handler->stealResponse();
+  if (! _isAsync) {
+    std::unique_ptr<TaskData> data(new TaskData());
+    data->_taskId = _handler->taskId();
+    data->_loop = _handler->eventLoop();
+    data->_type = TaskData::TASK_DATA_RESPONSE;
+    data->_response = _handler->stealResponse();
 
-  Scheduler::SCHEDULER->signalTask(data);
-  //  }
+    Scheduler::SCHEDULER->signalTask(data);
+  }
 
   // the handler is no longer needed
   WorkMonitor::releaseHandler(_handler);
@@ -125,33 +123,12 @@ bool HttpServerJob::cancel() { return _handler->cancel(); }
 ////////////////////////////////////////////////////////////////////////////////
 
 void HttpServerJob::cleanup(DispatcherQueue* queue) {
-  /* TODO(fc) XXXX
-  if (isDetached()) {
+  if (_isAsync) {
     _server->jobManager()->finishAsyncJob(this);
   }
-  */
 
   queue->removeJob(this);
-
-  /* ZODO(fc) XXXX
-  if (--_refCount == 0) {
-    delete this;
-  }
-  */
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// {@inheritDoc}
-////////////////////////////////////////////////////////////////////////////////
-
-void HttpServerJob::beginShutdown() {
-  LOG_TRACE("shutdown job %p", (void*)this);
-
-  /* TODO(fc) XXXXX
-  if (--_refCount == 0) {
-    delete this;
-  }
-  */
+  delete this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

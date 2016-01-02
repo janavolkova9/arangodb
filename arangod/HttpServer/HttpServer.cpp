@@ -89,7 +89,7 @@ int HttpServer::sendChunk(uint64_t taskId, std::string const &data) {
 
   taskData->_taskId = taskId;
   taskData->_loop = it->second->eventLoop();
-  taskData->_type = HttpCommTask::TASK_DATA_CHUNK;
+  taskData->_type = TaskData::TASK_DATA_CHUNK;
   taskData->_data = data;
 
   Scheduler::SCHEDULER->signalTask(taskData);
@@ -298,7 +298,7 @@ void HttpServer::handleCommunicationFailure(HttpCommTask *task) {
 bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
                                     uint64_t *jobId) {
   // execute the handler using the dispatcher
-  std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler);
+  std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler, true);
 
   // set the job identifier
   if (jobId != nullptr) {

@@ -50,6 +50,10 @@ namespace triagens {
 
     class TaskData {
     public:
+      static uint64_t const TASK_DATA_RESPONSE = 1000;
+      static uint64_t const TASK_DATA_CHUNK = 1001;
+
+    public:
       uint64_t _taskId;
       EventLoop _loop;
       uint64_t _type;

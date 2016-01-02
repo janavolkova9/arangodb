@@ -228,7 +228,7 @@ class RequestStatisticsAgent
 
   void requestStatisticsAgentSetReadStart() {
     if (TRI_ENABLE_STATISTICS) {
-      if (_statistics != nullptr) {
+      if (_statistics != nullptr && _statistics->_readStart == 0.0) {
         _lastReadStart = _statistics->_readStart = TRI_StatisticsTime();
       }
     }

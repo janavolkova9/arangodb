@@ -268,6 +268,8 @@ void SchedulerThread::run () {
       if (task != nullptr) {
         task->signalTask(data);
       }
+
+      delete data;
     }
 
     // handle the events
