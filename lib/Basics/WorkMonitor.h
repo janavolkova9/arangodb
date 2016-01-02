@@ -30,7 +30,7 @@
 
 #include "Basics/Thread.h"
 
-#include "basics/WorkItem.h"
+#include "Basics/WorkItem.h"
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                              forward declarations
