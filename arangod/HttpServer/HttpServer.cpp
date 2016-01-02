@@ -294,13 +294,7 @@ bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
                                     uint64_t *jobId) {
 
   // execute the handler using the dispatcher
-  auto job = std::make_unique<HttpServerJob>(this, handler.get(), nullptr); // TODO XXXXX (fc) is this correct
-
-  // handler now belongs to the job
-  auto h = handler.release();
-
-  // create a new job
-  std::unique_ptr<Job> job(new HttpServerJob(this, handler));
+  std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler);
 
   // set the job identifier
   if (jobId != nullptr) {
@@ -341,10 +335,7 @@ bool HttpServer::handleRequest(HttpCommTask *task,
   }
 
   // use a dispatcher queue, handler belongs to the job
-  auto job = std::make_unique<HttpServerJob>(this, handler.get(), task);
-
-  // handler now belongs to the job
-  auto h = handler.release();
+  std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler);
 
   // add the job to the dispatcher
   int res = _dispatcher->addJob(job);

@@ -132,9 +132,6 @@ add_library(
     Basics/voc-errors.cpp
     Basics/voc-mimetypes.cpp
     Basics/WorkMonitor.cpp
-    Basics/WriteLocker.cpp
-    Basics/WriteUnlocker.cpp
-    Basics/xxhash.cpp
     JsonParser/json-parser.cpp
     ProgramOptions/program-options.cpp
     Rest/EndpointList.cpp
