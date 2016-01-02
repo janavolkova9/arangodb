@@ -91,7 +91,7 @@ int HttpServer::sendChunk(uint64_t taskId, std::string const &data) {
   taskData->_loop = it->second->eventLoop();
   taskData->_type = HttpCommTask::TASK_DATA_CHUNK;
   taskData->_data = data;
-  
+
   Scheduler::SCHEDULER->signalTask(taskData);
 
   return TRI_ERROR_NO_ERROR;
@@ -108,9 +108,13 @@ int HttpServer::sendChunk(uint64_t taskId, std::string const &data) {
 HttpServer::HttpServer(Scheduler *scheduler, Dispatcher *dispatcher,
                        HttpHandlerFactory *handlerFactory,
                        AsyncJobManager *jobManager, double keepAliveTimeout)
-    : _scheduler(scheduler), _dispatcher(dispatcher),
-      _handlerFactory(handlerFactory), _jobManager(jobManager), _listenTasks(),
-      _endpointList(nullptr), _commTasks(),
+    : _scheduler(scheduler),
+      _dispatcher(dispatcher),
+      _handlerFactory(handlerFactory),
+      _jobManager(jobManager),
+      _listenTasks(),
+      _endpointList(nullptr),
+      _commTasks(),
       _keepAliveTimeout(keepAliveTimeout) {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,7 +139,7 @@ HttpServer::~HttpServer() {
 ////////////////////////////////////////////////////////////////////////////////
 
 HttpCommTask *HttpServer::createCommTask(TRI_socket_t s,
-                                         ConnectionInfo const&info) {
+                                         ConnectionInfo const &info) {
   return new HttpCommTask(this, s, info, _keepAliveTimeout);
 }
 
@@ -147,7 +151,7 @@ HttpCommTask *HttpServer::createCommTask(TRI_socket_t s,
 /// @brief add the endpoint list
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServer::setEndpointList(EndpointList const*list) {
+void HttpServer::setEndpointList(EndpointList const *list) {
   _endpointList = list;
 }
 
@@ -166,10 +170,11 @@ void HttpServer::startListening() {
     if (ok) {
       LOG_DEBUG("bound to endpoint '%s'", i.first.c_str());
     } else {
-      LOG_FATAL_AND_EXIT("failed to bind to endpoint '%s'. Please check "
-                         "whether another instance is already running or "
-                         "review your endpoints configuration.",
-                         i.first.c_str());
+      LOG_FATAL_AND_EXIT(
+          "failed to bind to endpoint '%s'. Please check "
+          "whether another instance is already running or "
+          "review your endpoints configuration.",
+          i.first.c_str());
     }
   }
 }
@@ -236,7 +241,7 @@ void HttpServer::stop() {
 /// @brief handles connection request
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServer::handleConnected(TRI_socket_t s, ConnectionInfo const&info) {
+void HttpServer::handleConnected(TRI_socket_t s, ConnectionInfo const &info) {
   HttpCommTask *task = createCommTask(s, info);
 
   try {
@@ -292,13 +297,12 @@ void HttpServer::handleCommunicationFailure(HttpCommTask *task) {
 
 bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
                                     uint64_t *jobId) {
-
   // execute the handler using the dispatcher
   std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler);
 
   // set the job identifier
   if (jobId != nullptr) {
-    _jobManager->initAsyncJob(static_cast<HttpServerJob*>(job.get()));
+    _jobManager->initAsyncJob(static_cast<HttpServerJob *>(job.get()));
     *jobId = job->jobId();
   }
 
@@ -325,7 +329,6 @@ bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
 
 bool HttpServer::handleRequest(HttpCommTask *task,
                                WorkItem::uptr<HttpHandler> &handler) {
-
   // direct handlers
   if (handler->isDirect()) {
     HandlerWorkStack work(handler, true);

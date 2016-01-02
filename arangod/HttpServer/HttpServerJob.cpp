@@ -55,8 +55,8 @@ using namespace std;
 /// @brief constructs a new server job
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpServerJob::HttpServerJob(HttpServer *server,
-                             WorkItem::uptr<HttpHandler> &handler)
+HttpServerJob::HttpServerJob(HttpServer* server,
+                             WorkItem::uptr<HttpHandler>& handler)
     : Job("HttpServerJob"), _server(server) {
   _handler.swap(handler);
 }
@@ -65,9 +65,7 @@ HttpServerJob::HttpServerJob(HttpServer *server,
 /// @brief destructs a server job
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpServerJob::~HttpServerJob () {
-  WorkMonitor::releaseHandler(_handler);
-}
+HttpServerJob::~HttpServerJob() { WorkMonitor::releaseHandler(_handler); }
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       Job methods
@@ -77,9 +75,7 @@ HttpServerJob::~HttpServerJob () {
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-size_t HttpServerJob::queue () const {
-  return _handler->queue();
-}
+size_t HttpServerJob::queue() const { return _handler->queue(); }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// {@inheritDoc}
@@ -92,12 +88,10 @@ Job::status_t HttpServerJob::work() {
 
   // start working with handler
   HttpHandler::status_t status;
+  RequestStatisticsAgent::transfer(_handler.get());
 
   {
     HandlerWorkStack work(_handler, false);
-    this->RequestStatisticsAgent::transfer(
-        _handler.get());  // FMH TODO(fc) XXX MOVE to WorkMonitor?
-
     status = _handler->executeFull();
   }
 
@@ -106,34 +100,35 @@ Job::status_t HttpServerJob::work() {
   /* TODO(fc) XXXX
   if (!isDetached()) {
   */
-    std::unique_ptr<TaskData> data(new TaskData());
-    data->_taskId = _handler->taskId();
-    data->_loop = _handler->eventLoop();
-    data->_type = HttpCommTask::TASK_DATA_RESPONSE; // TODO(fc) XXX this should be TaskData::
-    data->_response = _handler->stealResponse();
+  std::unique_ptr<TaskData> data(new TaskData());
+  data->_taskId = _handler->taskId();
+  data->_loop = _handler->eventLoop();
+  data->_type = HttpCommTask::TASK_DATA_RESPONSE;  // TODO(fc) XXX this should
+                                                   // be TaskData::
+  data->_response = _handler->stealResponse();
 
-    WorkMonitor::releaseHandler(_handler);
-    _handler = nullptr;
+  Scheduler::SCHEDULER->signalTask(data);
+  //  }
 
-    Scheduler::SCHEDULER->signalTask(data);
-    //  }
+  // the handler is no longer needed
+  WorkMonitor::releaseHandler(_handler);
+  _handler = nullptr;
 
-  return status.jobStatus();
+  // return the status
+  return status.jobStatus(); // TODO(fc) do we need a status
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-bool HttpServerJob::cancel () {
-  return _handler->cancel();
-}
+bool HttpServerJob::cancel() { return _handler->cancel(); }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServerJob::cleanup (DispatcherQueue* queue) {
+void HttpServerJob::cleanup(DispatcherQueue* queue) {
   /* TODO(fc) XXXX
   if (isDetached()) {
     _server->jobManager()->finishAsyncJob(this);
@@ -153,8 +148,8 @@ void HttpServerJob::cleanup (DispatcherQueue* queue) {
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServerJob::beginShutdown () {
-  LOG_TRACE("shutdown job %p", (void*) this);
+void HttpServerJob::beginShutdown() {
+  LOG_TRACE("shutdown job %p", (void*)this);
 
   /* TODO(fc) XXXXX
   if (--_refCount == 0) {
@@ -167,7 +162,7 @@ void HttpServerJob::beginShutdown () {
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-void HttpServerJob::handleError (triagens::basics::Exception const& ex) {
+void HttpServerJob::handleError(triagens::basics::Exception const& ex) {
   _handler->handleError(ex);
 }
 

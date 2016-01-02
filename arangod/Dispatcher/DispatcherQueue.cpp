@@ -109,8 +109,8 @@ DispatcherQueue::~DispatcherQueue () {
 /// @brief adds a job
 ////////////////////////////////////////////////////////////////////////////////
 
-int DispatcherQueue::addJob (Job* job) {
-  TRI_ASSERT(job != nullptr);
+int DispatcherQueue::addJob (std::unique_ptr<Job>& job) {
+  TRI_ASSERT(job.get() != nullptr);
 
   // get next free slot, return false is queue is full
   size_t pos;
@@ -119,13 +119,14 @@ int DispatcherQueue::addJob (Job* job) {
     return TRI_ERROR_QUEUE_FULL;
   }
   
-  _jobs[pos] = job;
+  Job* raw = job.release();
+  _jobs[pos] = raw;
 
   // set the position inside the job
-  job->setQueuePosition(pos);
+  raw->setQueuePosition(pos);
 
   // add the job to the list of ready jobs
-  bool ok = _readyJobs.push(job);
+  bool ok = _readyJobs.push(raw);
 
   if (ok) {
     ++_numberJobs;
@@ -133,8 +134,8 @@ int DispatcherQueue::addJob (Job* job) {
   else {
     LOG_WARNING("cannot insert job into ready queue, giving up");
 
-    removeJob(job);
-    delete job;
+    removeJob(raw);
+    delete raw;
 
     return TRI_ERROR_QUEUE_FULL;
   }
@@ -174,7 +175,7 @@ void DispatcherQueue::removeJob (Job* job) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief tries to cancel a job
+/// @brief cancels a job
 ////////////////////////////////////////////////////////////////////////////////
 
 bool DispatcherQueue::cancelJob (uint64_t jobId) {
@@ -339,7 +340,7 @@ void DispatcherQueue::beginShutdown () {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief shut downs the queue
+/// @brief shuts down the queue
 ////////////////////////////////////////////////////////////////////////////////
 
 void DispatcherQueue::shutdown () {
