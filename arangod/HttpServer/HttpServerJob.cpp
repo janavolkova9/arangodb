@@ -97,7 +97,10 @@ void HttpServerJob::work() {
 
   LOG_TRACE("finished job %p", (void*)this);
 
-  if (! _isAsync) {
+  if (_isAsync) {
+    _server->jobManager()->finishAsyncJob(this);
+  }
+  else {
     std::unique_ptr<TaskData> data(new TaskData());
     data->_taskId = _handler->taskId();
     data->_loop = _handler->eventLoop();
@@ -123,10 +126,6 @@ bool HttpServerJob::cancel() { return _handler->cancel(); }
 ////////////////////////////////////////////////////////////////////////////////
 
 void HttpServerJob::cleanup(DispatcherQueue* queue) {
-  if (_isAsync) {
-    _server->jobManager()->finishAsyncJob(this);
-  }
-
   queue->removeJob(this);
   delete this;
 }
