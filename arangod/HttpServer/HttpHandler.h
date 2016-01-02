@@ -66,7 +66,7 @@ class HttpHandler : public RequestStatisticsAgent, public arangodb::WorkItem {
   // --SECTION--                                    constructors and destructors
   // ---------------------------------------------------------------------------
 
-public:
+ public:
   //////////////////////////////////////////////////////////////////////////////
   /// @brief constructs a new handler
   ///
@@ -80,14 +80,14 @@ public:
   /// @brief destructs a handler
   //////////////////////////////////////////////////////////////////////////////
 
-protected:
+ protected:
   ~HttpHandler();
 
   // ---------------------------------------------------------------------------
   // --SECTION--                                                    public types
   // ---------------------------------------------------------------------------
 
-public:
+ public:
   //////////////////////////////////////////////////////////////////////////////
   /// @brief status of execution
   //////////////////////////////////////////////////////////////////////////////
@@ -99,31 +99,18 @@ public:
   //////////////////////////////////////////////////////////////////////////////
 
   class status_t {
-  public:
+   public:
     status_t() : status_t(HANDLER_FAILED) {}
-
-    explicit status_t(status_e status) : status(status), sleep(0.0) {}
-
-    Job::status_t jobStatus() {
-      switch (status) {
-      case HttpHandler::HANDLER_DONE:
-        return Job::status_t(Job::JOB_DONE);
-
-      case HttpHandler::HANDLER_FAILED:
-      default:
-        return Job::status_t(Job::JOB_FAILED);
-      }
-    }
-
-    status_e status;
-    double sleep;
+    explicit status_t(status_e status) : _status(status) {}
+    void operator=(status_e status) { _status = status; }
+    status_e _status;
   };
 
   // ---------------------------------------------------------------------------
   // --SECTION--                                          virtual public methods
   // ---------------------------------------------------------------------------
 
-public:
+ public:
   //////////////////////////////////////////////////////////////////////////////
   /// @brief returns true if a handler is executed directly
   //////////////////////////////////////////////////////////////////////////////
@@ -176,7 +163,7 @@ public:
   // --SECTION--                                                  public methods
   // ---------------------------------------------------------------------------
 
-public:
+ public:
   //////////////////////////////////////////////////////////////////////////////
   /// @brief returns the id of the underlying task
   //////////////////////////////////////////////////////////////////////////////
@@ -235,7 +222,7 @@ public:
   // --SECTION--                                               protected methods
   // ---------------------------------------------------------------------------
 
-protected:
+ protected:
   //////////////////////////////////////////////////////////////////////////////
   /// @brief create a new HTTP response
   //////////////////////////////////////////////////////////////////////////////
@@ -246,8 +233,7 @@ protected:
   // --SECTION--                                             protected variables
   // ---------------------------------------------------------------------------
 
-protected:
-
+ protected:
   //////////////////////////////////////////////////////////////////////////////
   /// @brief handler id
   //////////////////////////////////////////////////////////////////////////////

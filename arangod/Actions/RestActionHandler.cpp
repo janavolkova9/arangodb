@@ -78,7 +78,7 @@ HttpHandler::status_t RestActionHandler::execute () {
   // check the request path
   if (_request->databaseName() == "_system") {
     if (TRI_IsPrefixString(_request->requestPath(), "/_admin/aardvark")) {
-      RequestStatisticsAgentSetIgnore(this);
+      requestStatisticsAgentSetIgnore();
     }
   }
 

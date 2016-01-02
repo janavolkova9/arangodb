@@ -81,21 +81,20 @@ size_t HttpServerJob::queue() const { return _handler->queue(); }
 /// {@inheritDoc}
 ////////////////////////////////////////////////////////////////////////////////
 
-Job::status_t HttpServerJob::work() {
+void HttpServerJob::work() {
   TRI_ASSERT(_handler != nullptr);
 
   LOG_TRACE("beginning job %p", (void*)this);
 
   // start working with handler
-  HttpHandler::status_t status;
   RequestStatisticsAgent::transfer(_handler.get());
 
   {
     HandlerWorkStack work(_handler, false);
-    status = _handler->executeFull();
+    _handler->executeFull();
   }
 
-  LOG_TRACE("finished job %p with status %d", (void*)this, (int)status.status);
+  LOG_TRACE("finished job %p", (void*)this);
 
   /* TODO(fc) XXXX
   if (!isDetached()) {
@@ -113,9 +112,6 @@ Job::status_t HttpServerJob::work() {
   // the handler is no longer needed
   WorkMonitor::releaseHandler(_handler);
   _handler = nullptr;
-
-  // return the status
-  return status.jobStatus(); // TODO(fc) do we need a status
 }
 
 ////////////////////////////////////////////////////////////////////////////////

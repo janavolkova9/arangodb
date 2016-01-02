@@ -74,7 +74,7 @@ bool RestDebugHelperHandler::isDirect () const {
 HttpHandler::status_t RestDebugHelperHandler::execute () {
   TRI_json_t result;
 
-  RequestStatisticsAgentSetIgnore(this);
+  requestStatisticsAgentSetIgnore();
 
   TRI_InitObjectJson(TRI_CORE_MEM_ZONE, &result, 3);
 
@@ -107,8 +107,3 @@ HttpHandler::status_t RestDebugHelperHandler::execute () {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|// --SECTION--\\|/// @\\}"
-// End:

@@ -162,7 +162,7 @@ void HttpHandler::setTaskId(uint64_t id, EventLoop loop) {
 HttpHandler::status_t HttpHandler::executeFull() {
   HttpHandler::status_t status(HttpHandler::HANDLER_FAILED);
 
-  RequestStatisticsAgentSetRequestStart(this); // FMH TODO: move into monitor
+  requestStatisticsAgentSetRequestStart();
 
   try {
     prepareExecute();
@@ -170,14 +170,14 @@ HttpHandler::status_t HttpHandler::executeFull() {
     try {
       status = execute();
     } catch (Exception const &ex) {
-      RequestStatisticsAgentSetExecuteError(this);
+      requestStatisticsAgentSetExecuteError();
       handleError(ex);
     } catch (std::exception const &ex) {
-      RequestStatisticsAgentSetExecuteError(this);
+      requestStatisticsAgentSetExecuteError();
       Exception err(TRI_ERROR_INTERNAL, ex.what(), __FILE__, __LINE__);
       handleError(err);
     } catch (...) {
-      RequestStatisticsAgentSetExecuteError(this);
+      requestStatisticsAgentSetExecuteError();
       Exception err(TRI_ERROR_INTERNAL, __FILE__, __LINE__);
       handleError(err);
     }
@@ -190,34 +190,28 @@ HttpHandler::status_t HttpHandler::executeFull() {
 
       handleError(err);
     }
-
-    if (_response == nullptr) {
-      _response = new HttpResponse(HttpResponse::SERVER_ERROR,
-                                   HttpRequest::MinCompatibility);
-    }
-
-    RequestStatisticsAgentSetRequestEnd(this);
-
-    return status;
   } catch (Exception const &ex) {
-    RequestStatisticsAgentSetExecuteError(this);
+    status = HANDLER_FAILED;
+    requestStatisticsAgentSetExecuteError();
     LOG_ERROR("caught exception: %s", DIAGNOSTIC_INFORMATION(ex));
   } catch (std::exception const &ex) {
-    RequestStatisticsAgentSetExecuteError(this);
+    status = HANDLER_FAILED;
+    requestStatisticsAgentSetExecuteError();
     LOG_ERROR("caught exception: %s", ex.what());
   } catch (...) {
-    RequestStatisticsAgentSetExecuteError(this);
+    status = HANDLER_FAILED;
+    requestStatisticsAgentSetExecuteError();
     LOG_ERROR("caught exception");
   }
-
-  RequestStatisticsAgentSetRequestEnd(this);
 
   if (_response == nullptr) {
     _response = new HttpResponse(HttpResponse::SERVER_ERROR,
                                  HttpRequest::MinCompatibility);
   }
 
-  return status_t(HttpHandler::HANDLER_FAILED);
+  requestStatisticsAgentSetRequestEnd();
+
+  return status;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

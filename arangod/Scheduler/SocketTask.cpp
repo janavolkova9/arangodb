@@ -66,7 +66,7 @@ SocketTask::SocketTask (TRI_socket_t socket, double keepAliveTimeout)
   _readBuffer = new StringBuffer(TRI_UNKNOWN_MEM_ZONE);
 
   ConnectionStatisticsAgent::acquire();
-  ConnectionStatisticsAgentSetStart(this);
+  connectionStatisticsAgentSetStart();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,7 +89,7 @@ SocketTask::~SocketTask () {
 
   delete _readBuffer;
 
-  ConnectionStatisticsAgentSetEnd(this);
+  connectionStatisticsAgentSetEnd();
   ConnectionStatisticsAgent::release();
 }
 

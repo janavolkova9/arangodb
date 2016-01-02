@@ -191,18 +191,12 @@ void DispatcherThread::unblock () {
 ////////////////////////////////////////////////////////////////////////////////
 
 void DispatcherThread::handleJob (Job* job) {
-
-  // set running job
   LOG_DEBUG("starting to run job: %s", job->getName().c_str());
 
-  // do the work (this might change the job type)
-  Job::status_t status(Job::JOB_FAILED);
-
+  // start all the dirty work
   try {
-    RequestStatisticsAgentSetQueueEnd(job);
-
-    // and do all the dirty work
-    status = job->work();
+    job->requestStatisticsAgentSetQueueEnd();
+    job->work();
   }
   catch (Exception const& ex) {
     try {
@@ -217,8 +211,6 @@ void DispatcherThread::handleJob (Job* job) {
     catch (...) {
       LOG_WARNING("caught unknown error while handling error!");
     }
-
-    status = Job::status_t(Job::JOB_FAILED);
   }
   catch (std::bad_alloc const& ex) {
     try {
@@ -230,8 +222,6 @@ void DispatcherThread::handleJob (Job* job) {
     catch (...) {
       LOG_WARNING("caught unknown error while handling error!");
     }
-
-    status = Job::status_t(Job::JOB_FAILED);
   }
   catch (std::exception const& ex) {
     try {
@@ -243,8 +233,6 @@ void DispatcherThread::handleJob (Job* job) {
     catch (...) {
       LOG_WARNING("caught unknown error while handling error!");
     }
-
-    status = Job::status_t(Job::JOB_FAILED);
   }
   catch (...) {
 #ifdef TRI_HAVE_POSIX_THREADS
@@ -263,8 +251,6 @@ void DispatcherThread::handleJob (Job* job) {
     catch (...) {
       LOG_WARNING("caught unknown error while handling error!");
     }
-
-    status = Job::status_t(Job::JOB_FAILED);
   }
 
   // finish jobs

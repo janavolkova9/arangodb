@@ -99,12 +99,12 @@ HttpCommTask::HttpCommTask (HttpServer* server,
     (int) _connectionInfo.clientPort
     );
 
-  ConnectionStatisticsAgentSetHttp(this);
+  connectionStatisticsAgentSetHttp();
   ConnectionStatisticsAgent::release();
 
   ConnectionStatisticsAgent::acquire();
-  ConnectionStatisticsAgentSetStart(this);
-  ConnectionStatisticsAgentSetHttp(this);
+  connectionStatisticsAgentSetStart();
+  connectionStatisticsAgentSetHttp();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,7 +197,7 @@ bool HttpCommTask::processRead () {
 
     if (this->RequestStatisticsAgent::_statistics != nullptr &&
         this->RequestStatisticsAgent::_statistics->_readStart == 0.0) {
-      RequestStatisticsAgentSetReadStart(this);
+      requestStatisticsAgentSetReadStart();
     }
 
     for (; ptr < end; ptr++) {
@@ -317,7 +317,7 @@ bool HttpCommTask::processRead () {
       // (original request object gets deleted before responding)
       _requestType = _request->requestType();
 
-      RequestStatisticsAgentSetRequestType(this, _requestType);
+      requestStatisticsAgentSetRequestType(_requestType);
 
       // handle different HTTP methods
       switch (_requestType) {
@@ -453,8 +453,8 @@ bool HttpCommTask::processRead () {
     return false;
   }
 
-  RequestStatisticsAgentSetReadEnd(this);
-  RequestStatisticsAgentAddReceivedBytes(this, _bodyPosition - _startPosition + _bodyLength);
+  requestStatisticsAgentSetReadEnd();
+  requestStatisticsAgentAddReceivedBytes(_bodyPosition - _startPosition + _bodyLength);
 
   bool const isOptionsRequest = (_requestType == HttpRequest::HTTP_REQUEST_OPTIONS);
   resetState(false);
@@ -836,7 +836,7 @@ void HttpCommTask::processRequest (uint32_t compatibility) {
     return;
   }
 
-  handler.get()->setTaskId(_taskId, _loop);
+  handler->setTaskId(_taskId, _loop);
 
   // clear request object
   _request = nullptr;
@@ -846,7 +846,7 @@ void HttpCommTask::processRequest (uint32_t compatibility) {
   bool ok = false;
 
   if (found && (asyncExecution == "true" || asyncExecution == "store")) {
-    RequestStatisticsAgentSetAsync(this);
+    requestStatisticsAgentSetAsync();
     uint64_t jobId = 0;
 
     if (asyncExecution == "store") {

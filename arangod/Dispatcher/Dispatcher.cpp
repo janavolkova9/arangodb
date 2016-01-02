@@ -141,7 +141,7 @@ int Dispatcher::addExtraQueue(size_t identifier, size_t nrThreads,
 ////////////////////////////////////////////////////////////////////////////////
 
 int Dispatcher::addJob(std::unique_ptr<Job>& job) {
-  RequestStatisticsAgentSetQueueStart(job.get());
+  job->requestStatisticsAgentSetQueueStart();
 
   // do not start new jobs if we are already shutting down
   if (_stopping.load(memory_order_relaxed)) {

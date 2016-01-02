@@ -313,7 +313,7 @@ HttpHandler::status_t RestBatchHandler::execute () {
       HandlerWorkStack work(handler, true);
       HttpHandler::status_t status = handler->executeFull();
 
-      if (status.status == HttpHandler::HANDLER_FAILED) {
+      if (status._status == HttpHandler::HANDLER_FAILED) {
         generateError(HttpResponse::BAD, TRI_ERROR_INTERNAL, "executing a handler for batch part failed");
 
         return status_t(HttpHandler::HANDLER_FAILED);

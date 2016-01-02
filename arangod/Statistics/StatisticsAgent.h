@@ -194,192 +194,179 @@ struct RequestStatisticsAgentDesc {
 /// @brief request statistics agent
 ////////////////////////////////////////////////////////////////////////////////
 
-typedef StatisticsAgent<TRI_request_statistics_t, RequestStatisticsAgentDesc>
-    RequestStatisticsAgent;
-}
-}
+class RequestStatisticsAgent
+    : public StatisticsAgent<TRI_request_statistics_t,
+                             RequestStatisticsAgentDesc> {
+ public:
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the request type
+  //////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the request type
-////////////////////////////////////////////////////////////////////////////////
-
-inline void RequestStatisticsAgentSetRequestType(
-    triagens::rest::RequestStatisticsAgent* a,
-    triagens::rest::HttpRequest::HttpRequestType b) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_requestType = b;
+  void requestStatisticsAgentSetRequestType(HttpRequest::HttpRequestType b) {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_requestType = b;
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @Brief sets the async flag
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @Brief sets the async flag
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetAsync(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_async = true;
+  void requestStatisticsAgentSetAsync() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_async = true;
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the read start
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the read start
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetReadStart(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_lastReadStart = a->_statistics->_readStart = TRI_StatisticsTime();
+  void requestStatisticsAgentSetReadStart() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _lastReadStart = _statistics->_readStart = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the read end
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the read end
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetReadEnd(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_readEnd = TRI_StatisticsTime();
+  void requestStatisticsAgentSetReadEnd() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_readEnd = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the write start
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the write start
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetWriteStart(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_writeStart = TRI_StatisticsTime();
+  void requestStatisticsAgentSetWriteStart() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_writeStart = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the write end
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the write end
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetWriteEnd(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_writeEnd = TRI_StatisticsTime();
+  void requestStatisticsAgentSetWriteEnd() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_writeEnd = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the queue start
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the queue start
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetQueueStart(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_queueStart = TRI_StatisticsTime();
+  void requestStatisticsAgentSetQueueStart() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_queueStart = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the queue end
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the queue end
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetQueueEnd(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_queueEnd = TRI_StatisticsTime();
+  void requestStatisticsAgentSetQueueEnd() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_queueEnd = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the request start
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the request start
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetRequestStart(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_requestStart = TRI_StatisticsTime();
+  void requestStatisticsAgentSetRequestStart() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_requestStart = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the request end
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the request end
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetRequestEnd(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_requestEnd = TRI_StatisticsTime();
+  void requestStatisticsAgentSetRequestEnd() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_requestEnd = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets execution error
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets execution error
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetExecuteError(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_executeError = true;
+  void requestStatisticsAgentSetExecuteError() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_executeError = true;
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets ignore flag
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets ignore flag
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentSetIgnore(
-    triagens::rest::RequestStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_ignore = true;
+  void requestStatisticsAgentSetIgnore() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_ignore = true;
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief adds bytes received
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief adds bytes received
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentAddReceivedBytes(
-    triagens::rest::RequestStatisticsAgent* a, size_t b) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_receivedBytes += (b);
+  void requestStatisticsAgentAddReceivedBytes(size_t b) {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_receivedBytes += b;
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief adds bytes sent
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief adds bytes sent
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void RequestStatisticsAgentAddSentBytes(
-    triagens::rest::RequestStatisticsAgent* a, size_t b) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_sentBytes += (b);
+  void requestStatisticsAgentAddSentBytes(size_t b) {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_sentBytes += b;
+      }
     }
   }
+};
+}
 }
 
 // -----------------------------------------------------------------------------
@@ -407,49 +394,47 @@ struct ConnectionStatisticsAgentDesc {
 /// @brief connection statistics agent
 ////////////////////////////////////////////////////////////////////////////////
 
-typedef StatisticsAgent<TRI_connection_statistics_t,
-                        ConnectionStatisticsAgentDesc>
-    ConnectionStatisticsAgent;
-}
-}
+class ConnectionStatisticsAgent
+    : public StatisticsAgent<TRI_connection_statistics_t,
+                             ConnectionStatisticsAgentDesc> {
+ public:
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the connection type
+  //////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the connection type
-////////////////////////////////////////////////////////////////////////////////
-
-inline void ConnectionStatisticsAgentSetHttp(
-    triagens::rest::ConnectionStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_http = true;
+  void connectionStatisticsAgentSetHttp() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_http = true;
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the connection start
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the connection start
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void ConnectionStatisticsAgentSetStart(
-    triagens::rest::ConnectionStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_connStart = TRI_StatisticsTime();
+  void connectionStatisticsAgentSetStart() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_connStart = TRI_StatisticsTime();
+      }
     }
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-/// @brief sets the connection end
-////////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  /// @brief sets the connection end
+  //////////////////////////////////////////////////////////////////////////////
 
-inline void ConnectionStatisticsAgentSetEnd(
-    triagens::rest::ConnectionStatisticsAgent* a) {
-  if (TRI_ENABLE_STATISTICS) {
-    if (a->_statistics != nullptr) {
-      a->_statistics->_connEnd = TRI_StatisticsTime();
+  void connectionStatisticsAgentSetEnd() {
+    if (TRI_ENABLE_STATISTICS) {
+      if (_statistics != nullptr) {
+        _statistics->_connEnd = TRI_StatisticsTime();
+      }
     }
   }
+};
+}
 }
 
 #endif
