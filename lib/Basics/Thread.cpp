@@ -136,7 +136,7 @@ Thread::~Thread () {
     }
   }
 
-  if (! _joined) {
+  if (_started && ! _joined) {
     int res = TRI_DetachThread(&_thread);
 
     // ignore threads that already died

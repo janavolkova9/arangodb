@@ -140,6 +140,7 @@ static void deleteWorkDescription (WorkDescription* desc) {
 /// @brief vpack representation of a work description
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO(fc)
 #if 0
 
 static void vpackWorkDescription (VPackBuilder* b, WorkDescription* desc) {
@@ -359,6 +360,7 @@ void WorkMonitor::run () {
       s *= 2;
     }
 
+// TODO(fc)
 #if 0
     double y = TRI_microtime();
 
@@ -403,7 +405,7 @@ void WorkMonitor::run () {
 // -----------------------------------------------------------------------------
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief starts garbage collector
+/// @brief starts the work monitor
 ////////////////////////////////////////////////////////////////////////////////
 
 void arangodb::InitializeWorkMonitor () {
@@ -411,7 +413,7 @@ void arangodb::InitializeWorkMonitor () {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// @brief stops garbage collector
+/// @brief stops the work monitor
 ////////////////////////////////////////////////////////////////////////////////
 
 void arangodb::ShutdownWorkMonitor () {
