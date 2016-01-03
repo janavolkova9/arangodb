@@ -112,6 +112,13 @@ static boost::lockfree::queue<WorkDescription*> EMPTY_WORK_DESCRIPTION(128);
 
 static boost::lockfree::queue<WorkDescription*> FREEABLE_WORK_DESCRIPTION(128);
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// @brief stopped flag
+////////////////////////////////////////////////////////////////////////////////
+
+static std::atomic<bool> WORK_MONITOR_STOPPED(false);
+
 // -----------------------------------------------------------------------------
 // --SECTION--                                                 private functions
 // -----------------------------------------------------------------------------
@@ -263,7 +270,12 @@ WorkDescription* WorkMonitor::deactivateWorkDescription () {
 ////////////////////////////////////////////////////////////////////////////////
 
 void WorkMonitor::freeWorkDescription (WorkDescription* desc) {
-  FREEABLE_WORK_DESCRIPTION.push(desc);
+  if (WORK_MONITOR_STOPPED) {
+    deleteWorkDescription(desc);
+  }
+  else {
+    FREEABLE_WORK_DESCRIPTION.push(desc);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -344,6 +356,7 @@ void WorkMonitor::run () {
   const uint32_t minSleep = 100;
   uint32_t s = minSleep;
 
+  // clean old entries and create summary if requested
   while (! _stopping) {
     bool found = false;
     WorkDescription* desc;
@@ -397,6 +410,21 @@ void WorkMonitor::run () {
 #endif
 
     usleep(s);
+  }
+
+  // indicate that we stopped the work monitor, freeWorkDescription
+  // should directly delete old entries
+  WORK_MONITOR_STOPPED = true;
+
+  // cleanup old entries
+  WorkDescription* desc;
+
+  while (FREEABLE_WORK_DESCRIPTION.pop(desc) && desc != nullptr) {
+    deleteWorkDescription(desc);
+  }
+  
+  while (EMPTY_WORK_DESCRIPTION.pop(desc) && desc != nullptr) {
+    delete desc;
   }
 }
 

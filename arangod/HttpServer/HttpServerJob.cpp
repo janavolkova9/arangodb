@@ -91,28 +91,28 @@ void HttpServerJob::work() {
   RequestStatisticsAgent::transfer(_handler.get());
 
   {
-    HandlerWorkStack work(_handler, false);
+    HandlerWorkStack work(_handler);
     _handler->executeFull();
+
+    if (_isAsync) {
+      _server->jobManager()->finishAsyncJob(this);
+    }
+    else {
+      std::unique_ptr<TaskData> data(new TaskData());
+      data->_taskId = _handler->taskId();
+      data->_loop = _handler->eventLoop();
+      data->_type = TaskData::TASK_DATA_RESPONSE;
+      data->_response = _handler->stealResponse();
+
+      Scheduler::SCHEDULER->signalTask(data);
+    }
+
+    // the handler is no longer needed
+    _handler = nullptr;
   }
 
   LOG_TRACE("finished job %p", (void*)this);
 
-  if (_isAsync) {
-    _server->jobManager()->finishAsyncJob(this);
-  }
-  else {
-    std::unique_ptr<TaskData> data(new TaskData());
-    data->_taskId = _handler->taskId();
-    data->_loop = _handler->eventLoop();
-    data->_type = TaskData::TASK_DATA_RESPONSE;
-    data->_response = _handler->stealResponse();
-
-    Scheduler::SCHEDULER->signalTask(data);
-  }
-
-  // the handler is no longer needed
-  WorkMonitor::releaseHandler(_handler);
-  _handler = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

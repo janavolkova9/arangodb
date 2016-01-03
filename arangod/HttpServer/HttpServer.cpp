@@ -331,7 +331,7 @@ bool HttpServer::handleRequest(HttpCommTask *task,
                                WorkItem::uptr<HttpHandler> &handler) {
   // direct handlers
   if (handler->isDirect()) {
-    HandlerWorkStack work(handler, true);
+    HandlerWorkStack work(handler);
     handleRequestDirectly(task, work.handler());
 
     return true;

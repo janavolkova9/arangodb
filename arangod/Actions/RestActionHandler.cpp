@@ -138,6 +138,7 @@ TRI_action_result_t RestActionHandler::executeAction () {
 
   if (result.isValid) {
     _response = result.response;
+    result.response = nullptr;
   }
   else if (result.canceled) {
     result.isValid = true;
@@ -147,6 +148,10 @@ TRI_action_result_t RestActionHandler::executeAction () {
     result.isValid = true;
     generateNotImplemented(_action->_url);
   }
+
+  if (result.response != nullptr) {
+    delete result.response;
+  }
   
   return result;
 }
@@ -154,8 +159,3 @@ TRI_action_result_t RestActionHandler::executeAction () {
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       END-OF-FILE
 // -----------------------------------------------------------------------------
-
-// Local Variables:
-// mode: outline-minor
-// outline-regexp: "/// @brief\\|/// {@inheritDoc}\\|/// @page\\|// --SECTION--\\|/// @\\}"
-// End:

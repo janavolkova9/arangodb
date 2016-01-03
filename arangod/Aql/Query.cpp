@@ -785,8 +785,6 @@ QueryResult Query::execute (QueryRegistry* registry) {
 /// may only be called with an active V8 handle scope
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <iostream>
-
 QueryResultV8 Query::executeV8 (v8::Isolate* isolate, 
                                 QueryRegistry* registry) {
   CustomWorkStack work("AQL", _queryString, _queryLength);

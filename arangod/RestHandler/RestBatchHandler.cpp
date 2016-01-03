@@ -310,7 +310,7 @@ HttpHandler::status_t RestBatchHandler::execute () {
 
     // start to work for this handler
     {
-      HandlerWorkStack work(handler, true);
+      HandlerWorkStack work(handler);
       HttpHandler::status_t status = handler->executeFull();
 
       if (status._status == HttpHandler::HANDLER_FAILED) {

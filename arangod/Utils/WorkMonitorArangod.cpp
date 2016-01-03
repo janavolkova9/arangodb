@@ -49,9 +49,8 @@ using namespace triagens::rest;
 /// @brief constructor
 ////////////////////////////////////////////////////////////////////////////////
 
-HandlerWorkStack::HandlerWorkStack (HttpHandler* handler, bool destroy) 
-  : _handler(handler),
-    _destroy(destroy) {
+HandlerWorkStack::HandlerWorkStack (HttpHandler* handler) 
+  : _handler(handler) {
   WorkMonitor::pushHandler(_handler);
 }
 
@@ -59,16 +58,8 @@ HandlerWorkStack::HandlerWorkStack (HttpHandler* handler, bool destroy)
 /// @brief constructor
 ////////////////////////////////////////////////////////////////////////////////
 
-HandlerWorkStack::HandlerWorkStack (WorkItem::uptr<HttpHandler>& handler,
-                                    bool destroy)
-  : _destroy(destroy) {
-  if (_destroy) {
-    _handler = handler.release();
-  }
-  else {
-    _handler = handler.get();
-  }
-
+HandlerWorkStack::HandlerWorkStack (WorkItem::uptr<HttpHandler>& handler) {
+  _handler = handler.release();
   WorkMonitor::pushHandler(_handler);
 }
 
@@ -77,12 +68,7 @@ HandlerWorkStack::HandlerWorkStack (WorkItem::uptr<HttpHandler>& handler,
 ////////////////////////////////////////////////////////////////////////////////
 
 HandlerWorkStack::~HandlerWorkStack () {
-  if (_destroy) {
-    WorkMonitor::destroyHandler(_handler);
-  }
-  else {
-    WorkMonitor::popHandler(_handler);
-  }
+  WorkMonitor::destroyHandler(_handler);
 }
 
 // -----------------------------------------------------------------------------
@@ -102,21 +88,6 @@ void WorkMonitor::pushHandler (HttpHandler* handler) {
   desc->_data.handler = handler;
 
   activateWorkDescription(desc);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// @brief pops a handler
-////////////////////////////////////////////////////////////////////////////////
-
-void WorkMonitor::popHandler (HttpHandler* handler) {
-  WorkDescription* desc = deactivateWorkDescription();
-
-  TRI_ASSERT(desc != nullptr);
-  TRI_ASSERT(desc->_data.handler == handler);
-
-  desc->_destroy = false;
-
-  freeWorkDescription(desc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
