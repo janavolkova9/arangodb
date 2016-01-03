@@ -66,7 +66,9 @@ HttpServerJob::HttpServerJob(HttpServer* server,
 /// @brief destructs a server job
 ////////////////////////////////////////////////////////////////////////////////
 
-HttpServerJob::~HttpServerJob() { WorkMonitor::releaseHandler(_handler); }
+HttpServerJob::~HttpServerJob() {
+  WorkMonitor::popHandler(_handler.release());
+}
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                       Job methods
@@ -88,30 +90,32 @@ void HttpServerJob::work() {
   LOG_TRACE("beginning job %p", (void*)this);
 
   // start working with handler
-  RequestStatisticsAgent::transfer(_handler.get());
+  RequestStatisticsAgent::transfer(_handler.get()); // TODO(fc) need to transfer to WorkData
 
-  {
-    HandlerWorkStack work(_handler);
+  // the _handler needs to stay intact, so that we can cancel the job
+  // therefore cannot use HandlerWorkStack here. Because we need to
+  // keep the handler until the job is destroyed, the destroyHandler is
+  // executed in the destructor
 
-    work.handler()->executeFull();
+  WorkMonitor::pushHandler(_handler.get());
 
-    if (_isAsync) {
-      _server->jobManager()->finishAsyncJob(_jobId, work.handler()->stealResponse());
-    }
-    else {
-      std::unique_ptr<TaskData> data(new TaskData());
+  _handler->executeFull();
 
-      data->_taskId = work.handler()->taskId();
-      data->_loop = work.handler()->eventLoop();
-      data->_type = TaskData::TASK_DATA_RESPONSE;
-      data->_response.reset(work.handler()->stealResponse());
+  if (_isAsync) {
+    _server->jobManager()->finishAsyncJob(_jobId, _handler->stealResponse());
+  }
+  else {
+    std::unique_ptr<TaskData> data(new TaskData());
 
-      Scheduler::SCHEDULER->signalTask(data);
-    }
+    data->_taskId = _handler->taskId();
+    data->_loop = _handler->eventLoop();
+    data->_type = TaskData::TASK_DATA_RESPONSE;
+    data->_response.reset(_handler->stealResponse());
+
+    Scheduler::SCHEDULER->signalTask(data);
   }
 
   LOG_TRACE("finished job %p", (void*)this);
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////

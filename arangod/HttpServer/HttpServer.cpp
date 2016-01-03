@@ -297,6 +297,7 @@ void HttpServer::handleCommunicationFailure(HttpCommTask *task) {
 
 bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
                                     uint64_t *jobId) {
+
   // execute the handler using the dispatcher
   std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler, true);
 
