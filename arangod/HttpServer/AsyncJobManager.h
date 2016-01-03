@@ -240,7 +240,7 @@ namespace triagens {
 /// @brief finishes the execution of an async job
 ////////////////////////////////////////////////////////////////////////////////
 
-        void finishAsyncJob (HttpServerJob*);
+        void finishAsyncJob(AsyncJobResult::IdType jobId, HttpResponse*);
 
 // -----------------------------------------------------------------------------
 // --SECTION--                                                 private variables

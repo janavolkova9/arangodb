@@ -361,35 +361,20 @@ void AsyncJobManager::initAsyncJob (HttpServerJob* job) {
 /// @brief finishes the execution of an async job
 ////////////////////////////////////////////////////////////////////////////////
 
-void AsyncJobManager::finishAsyncJob (HttpServerJob* job) {
-  TRI_ASSERT(job != nullptr);
-
-  HttpHandler* handler = job->handler();
-  TRI_ASSERT(handler != nullptr);
-
-  AsyncJobResult::IdType jobId = job->jobId();
-
-  if (jobId == 0) {
-    return;
-  }
-
+void AsyncJobManager::finishAsyncJob (AsyncJobResult::IdType jobId,
+                                      HttpResponse* response) {
   double const now = TRI_microtime();
   AsyncCallbackContext* ctx = nullptr;
-  HttpResponse* response    = nullptr;
 
   {
     WRITE_LOCKER(_lock);
     auto it = _jobs.find(jobId);
 
     if (it == _jobs.end()) {
-      // job is already deleted.
-      // do nothing here. the dispatcher will throw away the handler,
-      // which will also dispose the response
+      delete response;
       return;
     }
     else {
-      response = handler->stealResponse();
-
       (*it).second._response = response;
       (*it).second._status = AsyncJobResult::JOB_DONE;
       (*it).second._stamp = now;
@@ -403,8 +388,6 @@ void AsyncJobManager::finishAsyncJob (HttpServerJob* job) {
       }
     }
   }
-
-  // If we got here, then we have stolen the pointer to the response
 
   // If there is a callback context, the job is no longer in the
   // list of "done" jobs, so we have to free the response and the

@@ -96,7 +96,7 @@ void HttpServerJob::work() {
     work.handler()->executeFull();
 
     if (_isAsync) {
-      _server->jobManager()->finishAsyncJob(this);
+      _server->jobManager()->finishAsyncJob(_jobId, work.handler()->stealResponse());
     }
     else {
       std::unique_ptr<TaskData> data(new TaskData());
