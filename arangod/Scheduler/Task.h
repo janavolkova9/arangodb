@@ -36,6 +36,7 @@
 #include "Basics/Common.h"
 
 #include "Scheduler/events.h"
+#include "lib/Rest/HttpResponse.h"
 
 struct TRI_json_t;
 
@@ -58,7 +59,7 @@ namespace triagens {
       EventLoop _loop;
       uint64_t _type;
       std::string _data;
-      HttpResponse *_response;
+      std::unique_ptr<HttpResponse> _response;
     };
 
 // -----------------------------------------------------------------------------

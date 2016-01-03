@@ -92,23 +92,22 @@ void HttpServerJob::work() {
 
   {
     HandlerWorkStack work(_handler);
-    _handler->executeFull();
+
+    work.handler()->executeFull();
 
     if (_isAsync) {
       _server->jobManager()->finishAsyncJob(this);
     }
     else {
       std::unique_ptr<TaskData> data(new TaskData());
-      data->_taskId = _handler->taskId();
-      data->_loop = _handler->eventLoop();
+
+      data->_taskId = work.handler()->taskId();
+      data->_loop = work.handler()->eventLoop();
       data->_type = TaskData::TASK_DATA_RESPONSE;
-      data->_response = _handler->stealResponse();
+      data->_response.reset(work.handler()->stealResponse());
 
       Scheduler::SCHEDULER->signalTask(data);
     }
-
-    // the handler is no longer needed
-    _handler = nullptr;
   }
 
   LOG_TRACE("finished job %p", (void*)this);

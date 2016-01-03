@@ -60,8 +60,14 @@ void Thread::startThread (void* arg) {
 
   WorkMonitor::pushThread(ptr);
 
-  ptr->runMe();
-  ptr->cleanup();
+  try {
+    ptr->runMe();
+    ptr->cleanup();
+  }
+  catch (...) {
+    WorkMonitor::popThread(ptr);
+    throw;
+  }
 
   WorkMonitor::popThread(ptr);
 }

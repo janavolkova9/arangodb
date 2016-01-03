@@ -1023,7 +1023,7 @@ void HttpCommTask::signalTask(TaskData* data) {
 
   // data response
   if (data->_type == TaskData::TASK_DATA_RESPONSE) {
-    handleResponse(data->_response);
+    handleResponse(data->_response.get());
     processRead();
   }
 
@@ -1050,7 +1050,6 @@ void HttpCommTask::signalTask(TaskData* data) {
   // do not know, what to do - give up
   else {
     _scheduler->destroyTask(this);
-    return;
   }
 }
 
