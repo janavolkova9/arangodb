@@ -246,8 +246,6 @@ void DispatcherQueue::unblockThread () {
 /// @brief begins the shutdown sequence the queue
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <iostream>
-
 void DispatcherQueue::beginShutdown () {
   if (_stopping) {
     return;
@@ -265,10 +263,7 @@ void DispatcherQueue::beginShutdown () {
     Job* job = nullptr;
     
     while (_readyJobs.pop(job)) {
-      std::cout << "FOUND READY JOB " << (void*) job << "\n";
-
       if (job != nullptr) {
-        std::cout << "NAME " << job->getName() << "\n";
         --_numberJobs;
 
         removeJob(job);

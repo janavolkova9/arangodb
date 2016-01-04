@@ -136,7 +136,7 @@ namespace triagens {
 /// @brief cancel flag
 ////////////////////////////////////////////////////////////////////////////////
 
-      volatile sig_atomic_t _canceled; // TODO(fc): should be an atomic
+        std::atomic<bool> _canceled;
     };
   }
 }

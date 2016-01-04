@@ -1023,6 +1023,7 @@ void HttpCommTask::signalTask(TaskData* data) {
 
   // data response
   if (data->_type == TaskData::TASK_DATA_RESPONSE) {
+    data->transfer(this);
     handleResponse(data->_response.get());
     processRead();
   }

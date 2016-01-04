@@ -37,6 +37,7 @@
 
 #include "Scheduler/events.h"
 #include "lib/Rest/HttpResponse.h"
+#include "Statistics/StatisticsAgent.h"
 
 struct TRI_json_t;
 
@@ -49,7 +50,7 @@ namespace triagens {
 // --SECTION--                                                    class TaskData
 // -----------------------------------------------------------------------------
 
-    class TaskData {
+    class TaskData : public RequestStatisticsAgent {
     public:
       static uint64_t const TASK_DATA_RESPONSE = 1000;
       static uint64_t const TASK_DATA_CHUNK = 1001;

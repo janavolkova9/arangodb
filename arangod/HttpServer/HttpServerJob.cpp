@@ -67,12 +67,7 @@ HttpServerJob::HttpServerJob(HttpServer* server,
 /// @brief destructs a server job
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <iostream>
-
 HttpServerJob::~HttpServerJob() {
-  std::cout << "destructor " << (void*) this << "\n";
-  std::cout << "_handler " << (void*)(_handler.get()) << "\n";
-
   if (_workDesc != nullptr) {
     WorkMonitor::freeWorkDescription(_workDesc);
   }
@@ -120,6 +115,8 @@ void HttpServerJob::work() {
       data->_loop = _handler->eventLoop();
       data->_type = TaskData::TASK_DATA_RESPONSE;
       data->_response.reset(_handler->stealResponse());
+
+      _handler->RequestStatisticsAgent::transfer(data.get());
 
       Scheduler::SCHEDULER->signalTask(data);
     }

@@ -37,8 +37,6 @@
 
 #include <boost/lockfree/queue.hpp>
 
-#include <iostream>
-
 using namespace arangodb;
 using namespace triagens::basics;
 
@@ -147,8 +145,10 @@ static void deleteWorkDescription (WorkDescription* desc) {
 /// @brief vpack representation of a work description
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO(fc)
-#if 0
+#define SHOW_RESULTS
+// TODO(fc) use vpackWorkDescription
+#ifdef SHOW_RESULTS
+#include <iostream>
 
 static void vpackWorkDescription (VPackBuilder* b, WorkDescription* desc) {
   switch (desc->_type) {
@@ -356,6 +356,10 @@ void WorkMonitor::run () {
   const uint32_t minSleep = 100;
   uint32_t s = minSleep;
 
+#ifdef SHOW_RESULTS
+  double x = 0;
+#endif
+
   // clean old entries and create summary if requested
   while (! _stopping) {
     bool found = false;
@@ -373,8 +377,8 @@ void WorkMonitor::run () {
       s *= 2;
     }
 
-// TODO(fc)
-#if 0
+// TODO(fc) trigger output
+#ifdef SHOW_RESULTS
     double y = TRI_microtime();
 
     if (x + 10 < y) {
@@ -406,6 +410,8 @@ void WorkMonitor::run () {
 
       VPackDumper dumper(&sink, &options);
       dumper.dump(s);
+
+      std::cout << buffer << "\n";
     }
 #endif
 

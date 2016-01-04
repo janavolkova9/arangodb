@@ -58,7 +58,7 @@ V8QueueJob::V8QueueJob (size_t queue,
     _vocbase(vocbase),
     _v8Dealer(v8Dealer),
     _parameters(nullptr),
-    _canceled(0) {
+    _canceled(false) {
 
   if (parameters != nullptr) {
     // create our own copy of the parameters
@@ -162,7 +162,7 @@ void V8QueueJob::work () {
 ////////////////////////////////////////////////////////////////////////////////
 
 bool V8QueueJob::cancel () {
-  _canceled = 1;
+  _canceled = true;
   return true;
 }
 

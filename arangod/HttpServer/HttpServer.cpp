@@ -301,24 +301,22 @@ bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
   // execute the handler using the dispatcher
   std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler, true);
 
-  // set the job identifier
-  if (jobId != nullptr) {
-    _jobManager->initAsyncJob(static_cast<HttpServerJob *>(job.get()));
-    *jobId = job->jobId();
-  }
-
   // execute the handler using the dispatcher
   int res = _dispatcher->addJob(job);
 
   // could not add job to job queue
-  /*
-  if (error != TRI_ERROR_NO_ERROR) {
-    // TODO(fc) XXX RequestStatisticsAgentSetExecuteError(h);
+  if (res != TRI_ERROR_NO_ERROR) {
+    job->requestStatisticsAgentSetExecuteError();
     LOG_WARNING("unable to add job to the job queue: %s",
-                TRI_errno_string(error));
+                TRI_errno_string(res));
     return false;
   }
-  */
+
+  // register the job with the job manager
+  if (jobId != nullptr) {
+    _jobManager->initAsyncJob(static_cast<HttpServerJob *>(job.get()));
+    *jobId = job->jobId();
+  }
 
   // job is in queue now
   return res == TRI_ERROR_NO_ERROR;
