@@ -1013,7 +1013,11 @@ QueryResult Query::explain () {
         it->planRegisters();
         out.add(it->toJson(parser.ast(), TRI_UNKNOWN_MEM_ZONE, verbosePlans()));
       }
+
       result.json = out.steal();
+
+      // cacheability not available here
+      result.cached = false;
     }
     else {
       // Now plan and all derived plans belong to the optimizer
@@ -1023,6 +1027,10 @@ QueryResult Query::explain () {
       bestPlan->findVarUsage();
       bestPlan->planRegisters();
       result.json = bestPlan->toJson(parser.ast(), TRI_UNKNOWN_MEM_ZONE, verbosePlans()).steal(); 
+    
+      // cacheability
+      result.cached = (_queryString != nullptr && _queryLength > 0 &&
+                       ! _isModificationQuery && _warnings.empty() && _ast->root()->isCacheable());
     }
 
     _trx->commit();
