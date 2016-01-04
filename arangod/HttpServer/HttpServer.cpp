@@ -298,6 +298,14 @@ void HttpServer::handleCommunicationFailure(HttpCommTask *task) {
 bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
                                     uint64_t *jobId) {
 
+  // extract the coordinator flag
+  bool found;
+  char const* hdr = handler->getRequest()->header("x-arango-coordinator", found);
+
+  if (! found) {
+    hdr = nullptr;
+  }
+
   // execute the handler using the dispatcher
   std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler, true);
 
@@ -314,7 +322,7 @@ bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
 
   // register the job with the job manager
   if (jobId != nullptr) {
-    _jobManager->initAsyncJob(static_cast<HttpServerJob *>(job.get()));
+    _jobManager->initAsyncJob(static_cast<HttpServerJob *>(job.get()), hdr);
     *jobId = job->jobId();
   }
 

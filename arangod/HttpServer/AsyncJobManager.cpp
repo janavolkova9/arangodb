@@ -335,13 +335,10 @@ const vector<AsyncJobResult::IdType> AsyncJobManager::byStatus (AsyncJobResult::
 /// @brief initializes an async job
 ////////////////////////////////////////////////////////////////////////////////
 
-void AsyncJobManager::initAsyncJob (HttpServerJob* job) {
+void AsyncJobManager::initAsyncJob (HttpServerJob* job, char const* hdr) {
   AsyncCallbackContext* ctx = nullptr;
 
-  bool found;
-  char const* hdr = job->handler()->getRequest()->header("x-arango-coordinator", found);
-
-  if (found) {
+  if (hdr != nullptr) {
     LOG_DEBUG("Found header X-Arango-Coordinator in async request");
     ctx = new AsyncCallbackContext(string(hdr));
   }
