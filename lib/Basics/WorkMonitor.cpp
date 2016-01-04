@@ -145,7 +145,7 @@ static void deleteWorkDescription (WorkDescription* desc) {
 /// @brief vpack representation of a work description
 ////////////////////////////////////////////////////////////////////////////////
 
-#define SHOW_RESULTS
+#undef SHOW_RESULTS
 // TODO(fc) use vpackWorkDescription
 #ifdef SHOW_RESULTS
 #include <iostream>
