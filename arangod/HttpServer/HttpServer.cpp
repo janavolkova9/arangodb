@@ -309,6 +309,12 @@ bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
   // execute the handler using the dispatcher
   std::unique_ptr<Job> job = std::make_unique<HttpServerJob>(this, handler, true);
 
+  // register the job with the job manager
+  if (jobId != nullptr) {
+    _jobManager->initAsyncJob(static_cast<HttpServerJob *>(job.get()), hdr);
+    *jobId = job->jobId();
+  }
+
   // execute the handler using the dispatcher
   int res = _dispatcher->addJob(job);
 
@@ -317,13 +323,8 @@ bool HttpServer::handleRequestAsync(WorkItem::uptr<HttpHandler> &handler,
     job->requestStatisticsAgentSetExecuteError();
     LOG_WARNING("unable to add job to the job queue: %s",
                 TRI_errno_string(res));
+    // todo send info to async work manager?
     return false;
-  }
-
-  // register the job with the job manager
-  if (jobId != nullptr) {
-    _jobManager->initAsyncJob(static_cast<HttpServerJob *>(job.get()), hdr);
-    *jobId = job->jobId();
   }
 
   // job is in queue now
