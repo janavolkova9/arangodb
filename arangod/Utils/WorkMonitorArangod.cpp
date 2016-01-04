@@ -68,7 +68,7 @@ HandlerWorkStack::HandlerWorkStack (WorkItem::uptr<HttpHandler>& handler) {
 ////////////////////////////////////////////////////////////////////////////////
 
 HandlerWorkStack::~HandlerWorkStack () {
-  WorkMonitor::popHandler(_handler);
+  WorkMonitor::popHandler(_handler, true);
 }
 
 // -----------------------------------------------------------------------------
@@ -94,13 +94,17 @@ void WorkMonitor::pushHandler (HttpHandler* handler) {
 /// @brief pops and releases a handler
 ////////////////////////////////////////////////////////////////////////////////
 
-void WorkMonitor::popHandler (HttpHandler* handler) {
+WorkDescription* WorkMonitor::popHandler (HttpHandler* handler, bool free) {
   WorkDescription* desc = deactivateWorkDescription();
 
   TRI_ASSERT(desc != nullptr);
   TRI_ASSERT(desc->_data.handler == handler);
 
-  freeWorkDescription(desc);
+  if (free) {
+    freeWorkDescription(desc);
+  }
+
+  return desc;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

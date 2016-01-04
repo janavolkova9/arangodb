@@ -175,7 +175,7 @@ namespace arangodb {
 /// @brief pops and releases a handler
 ////////////////////////////////////////////////////////////////////////////////
 
-      static void popHandler (triagens::rest::HttpHandler*);
+      static WorkDescription* popHandler (triagens::rest::HttpHandler*, bool free);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief handler deleter

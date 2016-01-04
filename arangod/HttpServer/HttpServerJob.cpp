@@ -58,7 +58,8 @@ using namespace std;
 HttpServerJob::HttpServerJob(HttpServer* server,
                              WorkItem::uptr<HttpHandler>& handler,
                              bool isAsync)
-  : Job("HttpServerJob"), _server(server), _isAsync(isAsync) {
+  : Job("HttpServerJob"), _server(server),
+    _workDesc(nullptr), _isAsync(isAsync) {
   _handler.swap(handler);
 }
 
@@ -66,8 +67,15 @@ HttpServerJob::HttpServerJob(HttpServer* server,
 /// @brief destructs a server job
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <iostream>
+
 HttpServerJob::~HttpServerJob() {
-  WorkMonitor::popHandler(_handler.release());
+  std::cout << "destructor " << (void*) this << "\n";
+  std::cout << "_handler " << (void*)(_handler.get()) << "\n";
+
+  if (_workDesc != nullptr) {
+    WorkMonitor::freeWorkDescription(_workDesc);
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -85,7 +93,7 @@ size_t HttpServerJob::queue() const { return _handler->queue(); }
 ////////////////////////////////////////////////////////////////////////////////
 
 void HttpServerJob::work() {
-  TRI_ASSERT(_handler != nullptr);
+  TRI_ASSERT(_handler.get() != nullptr);
 
   LOG_TRACE("beginning job %p", (void*)this);
 
@@ -94,28 +102,36 @@ void HttpServerJob::work() {
 
   // the _handler needs to stay intact, so that we can cancel the job
   // therefore cannot use HandlerWorkStack here. Because we need to
-  // keep the handler until the job is destroyed, the destroyHandler is
-  // executed in the destructor
+  // keep the handler until the job is destroyed. Note that destroying
+  // might happen in a different thread in case of shutdown.
 
   WorkMonitor::pushHandler(_handler.get());
 
-  _handler->executeFull();
+  try {
+    _handler->executeFull();
 
-  if (_isAsync) {
-    _server->jobManager()->finishAsyncJob(_jobId, _handler->stealResponse());
+    if (_isAsync) {
+      _server->jobManager()->finishAsyncJob(_jobId, _handler->stealResponse());
+    }
+    else {
+      std::unique_ptr<TaskData> data(new TaskData());
+
+      data->_taskId = _handler->taskId();
+      data->_loop = _handler->eventLoop();
+      data->_type = TaskData::TASK_DATA_RESPONSE;
+      data->_response.reset(_handler->stealResponse());
+
+      Scheduler::SCHEDULER->signalTask(data);
+    }
+
+    LOG_TRACE("finished job %p", (void*)this);
   }
-  else {
-    std::unique_ptr<TaskData> data(new TaskData());
-
-    data->_taskId = _handler->taskId();
-    data->_loop = _handler->eventLoop();
-    data->_type = TaskData::TASK_DATA_RESPONSE;
-    data->_response.reset(_handler->stealResponse());
-
-    Scheduler::SCHEDULER->signalTask(data);
+  catch (...) {
+    _workDesc = WorkMonitor::popHandler(_handler.release(), false);
+    throw;
   }
 
-  LOG_TRACE("finished job %p", (void*)this);
+  _workDesc = WorkMonitor::popHandler(_handler.release(), false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -246,6 +246,8 @@ void DispatcherQueue::unblockThread () {
 /// @brief begins the shutdown sequence the queue
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <iostream>
+
 void DispatcherQueue::beginShutdown () {
   if (_stopping) {
     return;
@@ -262,15 +264,12 @@ void DispatcherQueue::beginShutdown () {
   {
     Job* job = nullptr;
     
-    while(_readyJobs.pop(job)) {
-      if (job != nullptr) {
-        --_numberJobs;
+    while (_readyJobs.pop(job)) {
+      std::cout << "FOUND READY JOB " << (void*) job << "\n";
 
-        try {
-          job->cancel();
-        }
-        catch (...) {
-        }
+      if (job != nullptr) {
+        std::cout << "NAME " << job->getName() << "\n";
+        --_numberJobs;
 
         removeJob(job);
         delete job;
@@ -278,7 +277,7 @@ void DispatcherQueue::beginShutdown () {
     }
   }
 
-  // now try to get rid of the remaining jobs
+  // now try to get rid of the remaining (running) jobs
   MUTEX_LOCKER(_hazardLock);
 
   for (size_t i = 0;  i < _maxSize;  ++i) {
